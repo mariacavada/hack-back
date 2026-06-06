@@ -1,12 +1,10 @@
-import pandas as pd
 import numpy as np
-from prophet import Prophet
 from datetime import datetime, timedelta
-from dateutil import parser as dateparser
 from typing import Optional
+from dateutil import parser as dateparser
 
 
-def parse_date(raw) -> datetime | None:
+def parse_date(raw) -> Optional[datetime]:
     if isinstance(raw, datetime):
         return raw
     try:
@@ -15,7 +13,7 @@ def parse_date(raw) -> datetime | None:
         return None
 
 
-def get_order_dates(customer_id: str, db) -> list[datetime]:
+def get_order_dates(customer_id: str, db) -> list:
     cursor = db.orders.find(
         {"customer_id": customer_id, "status_final": "entregado"},
         {"fecha_pedido": 1}
@@ -26,7 +24,6 @@ def get_order_dates(customer_id: str, db) -> list[datetime]:
         if d:
             dates.append(d)
 
-    # deduplicate and sort
     seen = set()
     unique = []
     for d in sorted(dates):
@@ -43,41 +40,25 @@ def train_and_predict(customer_id: str, cedis_id: Optional[str], db) -> Optional
     if len(dates) < 5:
         return None
 
-    # Build gap series: each row = (date_of_order, days_since_previous_order)
-    rows = []
-    for i in range(1, len(dates)):
-        gap = (dates[i] - dates[i - 1]).days
-        if gap > 0:
-            rows.append({"ds": dates[i], "y": float(gap)})
+    gaps = [(dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
+    gaps = [g for g in gaps if g > 0]
 
-    if len(rows) < 4:
+    if len(gaps) < 4:
         return None
 
-    df = pd.DataFrame(rows)
+    gaps_arr = np.array(gaps, dtype=float)
 
-    model = Prophet(
-        yearly_seasonality=True,
-        weekly_seasonality=True,
-        daily_seasonality=False,
-        interval_width=0.8,
-    )
-    model.fit(df)
+    # Exponential weights: pedidos recientes pesan más
+    weights = np.exp(np.linspace(0, 1, len(gaps_arr)))
+    weights /= weights.sum()
+    predicted_gap = float(np.dot(weights, gaps_arr))
 
-    future = model.make_future_dataframe(periods=1, freq="D")
-    forecast = model.predict(future)
+    # Confianza: qué tan regular es el cliente (CV bajo = cliente predecible)
+    cv = np.std(gaps_arr) / np.mean(gaps_arr)
+    confidence = float(max(0.0, min(1.0, 1.0 - cv)))
 
-    last = forecast.iloc[-1]
-    predicted_gap = max(1, round(float(last["yhat"])))
-    gap_lower = float(last["yhat_lower"])
-    gap_upper = float(last["yhat_upper"])
-
-    next_order = dates[-1] + timedelta(days=predicted_gap)
-
-    # Tighter confidence interval → higher confidence
-    interval = gap_upper - gap_lower
-    confidence = float(max(0.0, min(1.0, 1.0 - interval / max(1, 2 * predicted_gap))))
-
-    avg_gap = float(np.mean([r["y"] for r in rows]))
+    next_order = dates[-1] + timedelta(days=round(predicted_gap))
+    avg_gap = float(np.mean(gaps_arr))
 
     return {
         "customer_id": customer_id,
