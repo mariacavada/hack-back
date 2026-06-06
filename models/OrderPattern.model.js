@@ -2,8 +2,9 @@ const { Schema, model } = require('mongoose')
 
 const OrderPatternSchema = new Schema(
   {
-    customer_id: { type: Schema.Types.ObjectId, ref: 'Customer', required: true, index: true },
-    sku: { type: String, required: true },
+    customer_id: { type: String, required: true, index: true },
+    sku: { type: String, required: true, default: '__timing__' },
+    model_type: { type: String, enum: ['timing', 'quantity'], default: 'timing' },
     cedis_id: String,
     gap_promedio_dias: Number,
     cantidad_promedio: Number,

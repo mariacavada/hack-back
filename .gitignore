@@ -1,2 +1,6 @@
 node_modules/
 .env
+ml-service/.env
+ml-service/__pycache__/
+ml-service/*.pyc
+

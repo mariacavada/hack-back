@@ -6,6 +6,7 @@ const connectDB = require('./utils/db')
 
 const indexRoutes = require('./routes/index.routes')
 const authRoutes = require('./routes/auth.routes')
+const mlRoutes = require('./routes/ml.routes')
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -18,6 +19,7 @@ app.use(morgan('dev'))
 
 app.use('/', indexRoutes)
 app.use('/auth', authRoutes)
+app.use('/ml', mlRoutes)
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
