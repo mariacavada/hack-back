@@ -3,7 +3,7 @@ const { Schema, model } = require('mongoose')
 const TrackingPedidoSchema = new Schema(
   {
     id_pedido: { type: String, required: true, unique: true },
-    customer_id: { type: Schema.Types.ObjectId, ref: 'Customer', index: true },
+    customer_id: { type: String, index: true },
     eventos: [
       {
         status: String,
