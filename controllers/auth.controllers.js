@@ -41,26 +41,32 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { rol, email, password } = req.body
+    const { email, password } = req.body
 
-    if (!rol || !MODELS[rol]) {
-      return res.status(400).json({ message: 'rol debe ser customer, driver o admin' })
-    }
     if (!email || !password) {
       return res.status(400).json({ message: 'email y password son requeridos' })
     }
 
-    const Model = MODELS[rol]
-    const user = await Model.findOne({ email }).select('+password_hash')
-    if (!user) return res.status(401).json({ message: 'Credenciales inválidas' })
+    const [customer, driver, admin] = await Promise.all([
+      Customer.findOne({ email }).select('+password_hash'),
+      Driver.findOne({ email }).select('+password_hash'),
+      Admin.findOne({ email }).select('+password_hash'),
+    ])
 
-    const valid = await bcrypt.compare(password, user.password_hash)
+    const found = customer ? { user: customer, rol: 'customer' }
+      : driver ? { user: driver, rol: 'driver' }
+      : admin  ? { user: admin,  rol: 'admin'  }
+      : null
+
+    if (!found) return res.status(401).json({ message: 'Credenciales inválidas' })
+
+    const valid = await bcrypt.compare(password, found.user.password_hash)
     if (!valid) return res.status(401).json({ message: 'Credenciales inválidas' })
 
-    const token = jwt.sign({ id: user._id, rol }, process.env.JWT, { expiresIn: '24h' })
+    const token = jwt.sign({ id: found.user._id, rol: found.rol }, process.env.JWT, { expiresIn: '24h' })
 
-    const nombre = user.nombre || user.nombre_negocio || user.email
-    res.json({ token, user: { id: user._id, email: user.email, nombre, rol } })
+    const nombre = found.user.nombre || found.user.nombre_negocio || found.user.email
+    res.json({ token, user: { id: found.user._id, email: found.user.email, nombre, rol: found.rol } })
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message })
   }
