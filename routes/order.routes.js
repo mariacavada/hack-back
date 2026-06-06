@@ -6,16 +6,16 @@ const { createOrder, getMyOrders, getOrderDetail, respondSubstitution } = requir
 const router = Router()
 router.use(verifyToken)
 
-// Crear pedido (usuario)
-router.post('/', requireRole('usuario'), createOrder)
+// Crear pedido (customer)
+router.post('/', requireRole('customer'), createOrder)
 
-// Mis pedidos + tracking (usuario)
-router.get('/my', requireRole('usuario'), getMyOrders)
+// Mis pedidos + tracking (customer)
+router.get('/my', requireRole('customer'), getMyOrders)
 
-// Detalle de pedido (usuario, admin, repartidor)
-router.get('/:id', requireRole('usuario', 'admin', 'repartidor'), getOrderDetail)
+// Detalle de pedido (customer, admin, driver)
+router.get('/:id', requireRole('customer', 'admin', 'driver'), getOrderDetail)
 
-// Responder sustitución (usuario)
-router.patch('/:id/substitution', requireRole('usuario'), respondSubstitution)
+// Responder sustitución (customer)
+router.patch('/:id/substitution', requireRole('customer'), respondSubstitution)
 
 module.exports = router

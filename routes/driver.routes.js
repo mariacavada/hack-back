@@ -11,7 +11,7 @@ const {
 } = require('../controllers/driver.controllers')
 
 const router = Router()
-router.use(verifyToken, requireRole('repartidor'))
+router.use(verifyToken, requireRole('driver'))
 
 // Pedidos
 router.get('/orders', getAssignedOrders)

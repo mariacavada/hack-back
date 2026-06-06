@@ -5,7 +5,9 @@
  */
 const requireRole = (...roles) => (req, res, next) => {
   if (!req.decoded) return res.status(401).json({ message: 'No autenticado' })
-  if (!roles.includes(req.decoded.role)) {
+  // El JWT usa "rol" (no "role")
+  const userRole = req.decoded.rol || req.decoded.role
+  if (!roles.includes(userRole)) {
     return res.status(403).json({ message: `Acceso denegado. Se requiere rol: ${roles.join(' o ')}` })
   }
   next()

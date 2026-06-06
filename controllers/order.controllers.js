@@ -12,12 +12,12 @@ const createOrder = async (req, res) => {
     const { items, cedis_id, subtotal, total, ...rest } = req.body
     if (!items?.length) return res.status(400).json({ message: 'El pedido debe tener al menos 1 producto' })
 
-    // Generar id_pedido único
     const id_pedido = `PED-${Date.now()}`
+    console.log('[createOrder] 1 - creando order con id_pedido:', id_pedido)
 
     const order = await Order.create({
       id_pedido,
-      customer_id: req.decoded.id,
+      customer_id: String(req.decoded.id),
       cedis_id,
       subtotal,
       total,
@@ -25,8 +25,8 @@ const createOrder = async (req, res) => {
       fecha_pedido: new Date().toISOString(),
       ...rest,
     })
+    console.log('[createOrder] 2 - order creado:', order._id)
 
-    // Guardar detalle línea a línea
     const detalles = items.map((item, i) => ({
       id_linea: `${id_pedido}-${i + 1}`,
       id_pedido,
@@ -36,17 +36,20 @@ const createOrder = async (req, res) => {
       status: 'registrado',
     }))
     await OrderDetail.insertMany(detalles)
+    console.log('[createOrder] 3 - detalles insertados:', detalles.length)
 
-    // Inicializar tracking
+    // TrackingPedido: customer_id guardado como String para consistencia
     await TrackingPedido.create({
       id_pedido,
-      customer_id: req.decoded.id,
+      customer_id: String(req.decoded.id),
       status_actual: 'pendiente',
       eventos: [{ status: 'pendiente', descripcion: 'Pedido recibido' }],
     })
+    console.log('[createOrder] 4 - tracking creado')
 
     res.status(201).json({ message: 'Pedido creado', order, detalles })
   } catch (err) {
+    console.error('[createOrder] ERROR:', err.message)
     res.status(500).json({ message: 'Error al crear pedido', error: err.message })
   }
 }

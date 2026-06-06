@@ -3,12 +3,20 @@ const { GoogleGenerativeAI } = require('@google/generative-ai')
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
 /**
- * Llama a Gemini y devuelve JSON parseado.
- * El prompt DEBE pedir explícitamente respuesta en JSON.
+ * Llama a Gemini con timeout configurable y devuelve JSON parseado.
+ * @param {string} prompt
+ * @param {number} timeoutMs - default 20 segundos
  */
-async function askGemini(prompt) {
+async function askGemini(prompt, timeoutMs = 20000) {
   const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-  const result = await model.generateContent(prompt)
+
+  // Race entre la llamada real y un timeout
+  const geminiCall = model.generateContent(prompt)
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Gemini tardó demasiado (timeout)')), timeoutMs)
+  )
+
+  const result = await Promise.race([geminiCall, timeout])
   const text = result.response.text()
 
   // Extrae el bloque JSON aunque venga envuelto en markdown ```json ... ```

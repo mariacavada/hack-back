@@ -11,6 +11,7 @@ const adminRoutes = require('./routes/admin.routes')
 const orderRoutes = require('./routes/order.routes')
 const driverRoutes = require('./routes/driver.routes')
 const notificationRoutes = require('./routes/notification.routes')
+const dashboardRoutes = require('./routes/dashboard.routes')
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -28,6 +29,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/driver', driverRoutes)
 app.use('/api/notifications', notificationRoutes)
+app.use('/api', dashboardRoutes)
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
