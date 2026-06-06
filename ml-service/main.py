@@ -69,7 +69,11 @@ def train_all(background_tasks: BackgroundTasks):
 
 @app.post("/train/{customer_id}")
 def train_one(customer_id: str):
-    result = run_train(customer_id)
+    try:
+        result = run_train(customer_id)
+    except Exception as e:
+        logger.exception(f"Error training customer {customer_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     if not result:
         raise HTTPException(status_code=422, detail="Not enough order history (min 5 orders)")
     return {"ok": True, "prediction": result}

@@ -3,6 +3,7 @@ import numpy as np
 from prophet import Prophet
 from datetime import datetime, timedelta
 from dateutil import parser as dateparser
+from typing import Optional
 
 
 def parse_date(raw) -> datetime | None:
@@ -36,7 +37,7 @@ def get_order_dates(customer_id: str, db) -> list[datetime]:
     return unique
 
 
-def train_and_predict(customer_id: str, cedis_id: str | None, db) -> dict | None:
+def train_and_predict(customer_id: str, cedis_id: Optional[str], db) -> Optional[dict]:
     dates = get_order_dates(customer_id, db)
 
     if len(dates) < 5:
