@@ -6,6 +6,11 @@ const connectDB = require('./utils/db')
 
 const indexRoutes = require('./routes/index.routes')
 const authRoutes = require('./routes/auth.routes')
+const mlRoutes = require('./routes/ml.routes')
+const adminRoutes = require('./routes/admin.routes')
+const orderRoutes = require('./routes/order.routes')
+const driverRoutes = require('./routes/driver.routes')
+const notificationRoutes = require('./routes/notification.routes')
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -17,7 +22,12 @@ app.use(express.json())
 app.use(morgan('dev'))
 
 app.use('/', indexRoutes)
-app.use('/auth', authRoutes)
+app.use('/api/auth', authRoutes)
+app.use('/api/ml', mlRoutes)
+app.use('/api/admin', adminRoutes)
+app.use('/api/orders', orderRoutes)
+app.use('/api/driver', driverRoutes)
+app.use('/api/notifications', notificationRoutes)
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)

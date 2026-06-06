@@ -1,0 +1,436 @@
+{
+  "info": {
+    "name": "Order Rescue API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000" },
+    { "key": "token_usuario", "value": "" },
+    { "key": "token_admin", "value": "" },
+    { "key": "token_repartidor", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Register usuario",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"cliente@test.com\",\n  \"password\": \"123456\",\n  \"name\": \"Juan Pérez\",\n  \"role\": \"usuario\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register admin",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@test.com\",\n  \"password\": \"123456\",\n  \"name\": \"Admin Principal\",\n  \"role\": \"admin\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register repartidor",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"driver@test.com\",\n  \"password\": \"123456\",\n  \"name\": \"Carlos Ramírez\",\n  \"role\": \"repartidor\",\n  \"vehicle\": \"moto\",\n  \"cedis\": \"3012\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login usuario → copia token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.token) pm.collectionVariables.set('token_usuario', r.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"cliente@test.com\",\n  \"password\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login admin → copia token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.token) pm.collectionVariables.set('token_admin', r.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@test.com\",\n  \"password\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login repartidor → copia token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.token) pm.collectionVariables.set('token_repartidor', r.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"driver@test.com\",\n  \"password\": \"123456\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 Usuario — Pedidos",
+      "item": [
+        {
+          "name": "Crear pedido",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/orders",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_usuario}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cedis_id\": \"3012\",\n  \"subtotal\": 222,\n  \"total\": 255.30,\n  \"items\": [\n    { \"sku\": \"SKU-001\", \"nombre\": \"Leche Toni Frutilla 200ml\", \"cantidad\": 12 },\n    { \"sku\": \"SKU-002\", \"nombre\": \"Agua Ciel 1L\", \"cantidad\": 6 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Mis pedidos + tracking",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/orders/my",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_usuario}}" }]
+          }
+        },
+        {
+          "name": "Detalle de pedido",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/orders/REEMPLAZA_CON_ID",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_usuario}}" }]
+          }
+        },
+        {
+          "name": "Responder sustitución",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/orders/REEMPLAZA_CON_ID/substitution",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_usuario}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"original_sku\": \"SKU-001\",\n  \"original_name\": \"Leche Toni Frutilla 200ml\",\n  \"substitute_sku\": \"SKU-003\",\n  \"substitute_name\": \"Leche Toni Chocolate 200ml\",\n  \"accepted\": true\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔔 Notificaciones",
+      "item": [
+        {
+          "name": "Mis notificaciones",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/notifications?solo_no_leidas=false",
+              "query": [{ "key": "solo_no_leidas", "value": "false" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_usuario}}" }]
+          }
+        },
+        {
+          "name": "Marcar una como leída",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/notifications/REEMPLAZA_CON_ID/read",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_usuario}}" }]
+          }
+        },
+        {
+          "name": "Marcar todas como leídas",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/notifications/read-all",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_usuario}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛠️ Admin",
+      "item": [
+        {
+          "name": "Ver todos los usuarios",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/admin/users?role=usuario",
+              "query": [{ "key": "role", "value": "usuario" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_admin}}" }]
+          }
+        },
+        {
+          "name": "Ver detalle de usuario",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/admin/users/REEMPLAZA_CON_ID",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_admin}}" }]
+          }
+        },
+        {
+          "name": "Ver todos los pedidos",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/admin/orders?status_final=pendiente",
+              "query": [{ "key": "status_final", "value": "pendiente" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_admin}}" }]
+          }
+        },
+        {
+          "name": "Confirmar pedido",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/admin/orders/REEMPLAZA_CON_ID/confirm",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_admin}}" }]
+          }
+        },
+        {
+          "name": "Asignar repartidor",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/admin/orders/REEMPLAZA_CON_ID/assign",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_admin}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driver_id\": \"REEMPLAZA_CON_ID_REPARTIDOR\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Productos bajo stock",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/admin/inventory/low-stock?cedis_id=3012",
+              "query": [{ "key": "cedis_id", "value": "3012" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_admin}}" }]
+          }
+        },
+        {
+          "name": "Riesgo de agotamiento (ML)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/admin/inventory/depletion-risk?nivel=critico",
+              "query": [{ "key": "nivel", "value": "critico" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_admin}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚚 Repartidor",
+      "item": [
+        {
+          "name": "Ver pedidos asignados",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/driver/orders",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_repartidor}}" }]
+          }
+        },
+        {
+          "name": "Marcar en camino",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/driver/orders/REEMPLAZA_CON_ID/status",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_repartidor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"en_camino\",\n  \"coords\": { \"lat\": 19.4284, \"lng\": -99.1277 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Marcar entregado",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/driver/orders/REEMPLAZA_CON_ID/status",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_repartidor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"entregado\",\n  \"coords\": { \"lat\": 19.4301, \"lng\": -99.1350 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Reportar incidencia",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/driver/orders/REEMPLAZA_CON_ID/incident",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_repartidor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"producto_faltante\",\n  \"descripcion\": \"No había Leche Toni Frutilla en el pedido del almacén\",\n  \"items_afectados\": [\"SKU-001\"],\n  \"coords\": { \"lat\": 19.4284, \"lng\": -99.1277 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Iniciar ruta del día",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/driver/route/start",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_repartidor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cedis_id\": \"3012\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ver ruta de hoy",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/driver/route/today",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token_repartidor}}" }]
+          }
+        },
+        {
+          "name": "Completar parada",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/driver/route/REEMPLAZA_RUTA_ID/stop/1/complete",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token_repartidor}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coords\": { \"lat\": 19.4301, \"lng\": -99.1350 }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🤖 ML",
+      "item": [
+        {
+          "name": "Predecir agotamiento de SKU",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/ml/stock-predict",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cedis_id\": \"3012\",\n  \"sku\": \"SKU-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Predecir todo un cedis",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/ml/stock-predict/cedis",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cedis_id\": \"3012\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Patrón de reorden de cliente",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/ml/reorder-pattern",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"REEMPLAZA_CON_ID\",\n  \"sku\": \"SKU-001\",\n  \"sku_name\": \"Leche Toni Frutilla 200ml\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Sugerir sustitutos (ML)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/ml/substitution/suggest",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"REEMPLAZA_CON_ID\",\n  \"original_sku\": \"SKU-001\",\n  \"cedis_id\": \"3012\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
