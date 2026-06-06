@@ -60,19 +60,19 @@ def health():
     return {"status": "ok", "service": "ml-prophet"}
 
 
+@app.post("/train/all")
+def train_all(background_tasks: BackgroundTasks):
+    customer_ids = db.orders.distinct("customer_id")
+    background_tasks.add_task(_train_all_task, customer_ids)
+    return {"ok": True, "customers_queued": len(customer_ids)}
+
+
 @app.post("/train/{customer_id}")
 def train_one(customer_id: str):
     result = run_train(customer_id)
     if not result:
         raise HTTPException(status_code=422, detail="Not enough order history (min 5 orders)")
     return {"ok": True, "prediction": result}
-
-
-@app.post("/train/all")
-def train_all(background_tasks: BackgroundTasks):
-    customer_ids = db.orders.distinct("customer_id")
-    background_tasks.add_task(_train_all_task, customer_ids)
-    return {"ok": True, "customers_queued": len(customer_ids)}
 
 
 def _train_all_task(customer_ids: list[str]):
