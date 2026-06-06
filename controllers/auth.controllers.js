@@ -25,8 +25,6 @@ const register = async (req, res) => {
     const exists = await Model.findOne({ email })
     if (exists) return res.status(409).json({ message: 'Email ya registrado' })
 
-    const validRoles   = ['usuario', 'admin', 'repartidor']
-    const assignedRole = validRoles.includes(role) ? role : 'usuario'
     const password_hash = await bcrypt.hash(password, 10)
 
     const data = { email, password_hash, ...rest }
