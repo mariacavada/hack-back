@@ -25,6 +25,8 @@ const register = async (req, res) => {
     const exists = await Model.findOne({ email })
     if (exists) return res.status(409).json({ message: 'Email ya registrado' })
 
+    const validRoles   = ['usuario', 'admin', 'repartidor']
+    const assignedRole = validRoles.includes(role) ? role : 'usuario'
     const password_hash = await bcrypt.hash(password, 10)
 
     const data = { email, password_hash, ...rest }
@@ -72,4 +74,24 @@ const login = async (req, res) => {
   }
 }
 
-module.exports = { register, login }
+const me = async (req, res) => {
+  try {
+    // req.user viene del middleware verifyToken
+    let user = await Admin.findById(req.user.id).select('-password_hash')
+           ?? await Driver.findById(req.user.id).select('-password_hash')
+           ?? await Customer.findById(req.user.id).select('-password_hash')
+
+    if (!user) return res.status(404).json({ message: 'User not found' })
+
+    res.json({
+      id:     user._id,
+      nombre: user.nombre ?? user.nombre_negocio,
+      email:  user.email,
+      rol:    req.user.rol,
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message })
+  }
+}
+
+module.exports = { register, login, me }
