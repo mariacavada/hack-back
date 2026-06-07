@@ -66,6 +66,14 @@ def upsert_quantity(result: dict):
     customer_id = result["customer_id"]
     cedis_id = result.get("cedis_id")
     now = datetime.now(timezone.utc)
+    valid_skus = [item["sku"] for item in result["skus_sugeridos"]]
+
+    # Borrar sugerencias viejas que ya no son válidas (ej. SKU se quedó sin stock)
+    db.orderpatterns.delete_many({
+        "customer_id": customer_id,
+        "model_type": "quantity",
+        "sku": {"$nin": valid_skus},
+    })
 
     for item in result["skus_sugeridos"]:
         db.orderpatterns.update_one(
