@@ -70,6 +70,16 @@ async function construirOpcionesPorRuta(repartidores, ubicacionCliente, fechaEnt
   const cedis = await Cedis.findOne({ cedis_id }).select('ubicacion nombre').lean()
   const ubicacionCedis = cedis?.ubicacion?.lat ? cedis.ubicacion : null
 
+  // Cuántos vecinos más cercanos usamos para representar "el sub-grupo al
+  // que se uniría este pedido". Promediar contra TODAS las entregas del día
+  // puede esconder que un repartidor en realidad tiene su ruta partida en
+  // dos zonas muy separadas (ej. Apodaca Y San Pedro a la vez): el promedio
+  // general podría salir "razonable" sin que ninguna de las dos zonas esté
+  // realmente cerca del nuevo pedido — y eso le rompe la ruta de ese día.
+  // Promediar solo contra los más cercanos sí detecta si existe (o no) un
+  // sub-grupo cercano de verdad.
+  const VECINOS_PARA_PROMEDIO = 3
+
   return repartidores.map((r) => {
     const key = String(r._id)
     const idsClientesDelDia = [...(clientesPorDriver[key] || [])]
@@ -79,11 +89,12 @@ async function construirOpcionesPorRuta(repartidores, ubicacionCliente, fechaEnt
 
     let distancia_ruta_km, referencia
     if (ubicacionesCluster.length) {
-      const distancias = ubicacionesCluster.map((u) =>
-        distanciaKm(ubicacionCliente.lat, ubicacionCliente.lng, u.lat, u.lng)
-      )
-      distancia_ruta_km = +(distancias.reduce((a, b) => a + b, 0) / distancias.length).toFixed(2)
-      referencia = `${ubicacionesCluster.length} entrega(s) ya agendada(s) ese día — distancia promedio a esa zona`
+      const distancias = ubicacionesCluster
+        .map((u) => distanciaKm(ubicacionCliente.lat, ubicacionCliente.lng, u.lat, u.lng))
+        .sort((a, b) => a - b)
+      const masCercanos = distancias.slice(0, VECINOS_PARA_PROMEDIO)
+      distancia_ruta_km = +(masCercanos.reduce((a, b) => a + b, 0) / masCercanos.length).toFixed(2)
+      referencia = `${ubicacionesCluster.length} entrega(s) ya agendada(s) ese día — distancia promedio a sus ${masCercanos.length} más cercana(s) a esta zona`
     } else if (ubicacionCedis) {
       distancia_ruta_km = +distanciaKm(ubicacionCliente.lat, ubicacionCliente.lng, ubicacionCedis.lat, ubicacionCedis.lng).toFixed(2)
       referencia = 'sin entregas agendadas ese día — distancia desde el CEDIS (inicio de su ruta)'
@@ -101,6 +112,41 @@ async function construirOpcionesPorRuta(repartidores, ubicacionCliente, fechaEnt
       referencia,
     }
   })
+}
+
+/**
+ * Fallback heurístico (sin LLM) para cuando Gemini no está disponible —
+ * cuota agotada (429), alta demanda (503), respuesta vacía/no parseable, etc.
+ * En vez de dejar el pedido sin repartidor, ordenamos las opciones con los
+ * MISMOS criterios de prioridad que le pedimos a Gemini que aplicara:
+ *
+ *   1. Menor distancia de referencia a su ruta de ese día (más compacto;
+ *      "sin datos" se trata como "al final de la lista")
+ *   2. Menor carga ese día (para balancear el trabajo entre repartidores)
+ *   3. Mayor calificación promedio
+ *
+ * @param {object[]} opciones - lo que devuelve construirOpcionesPorRuta
+ * @returns {{ opcionElegida: object, razon: string }}
+ */
+function elegirMejorPorHeuristica(opciones) {
+  const ordenadas = [...opciones].sort((a, b) => {
+    const da = a.distancia_ruta_km ?? Infinity
+    const db = b.distancia_ruta_km ?? Infinity
+    if (da !== db) return da - db
+    if (a.entregas_agendadas_ese_dia !== b.entregas_agendadas_ese_dia) {
+      return a.entregas_agendadas_ese_dia - b.entregas_agendadas_ese_dia
+    }
+    return (b.calificacion || 0) - (a.calificacion || 0)
+  })
+
+  const elegida = ordenadas[0]
+  const razon =
+    `Asignación automática por reglas (la IA no está disponible en este momento): ` +
+    `${elegida.nombre} tiene la ruta más compacta para esta zona ese día ` +
+    `(${elegida.distancia_ruta_km != null ? `${elegida.distancia_ruta_km} km de referencia` : 'sin entregas previas ese día'}, ` +
+    `${elegida.entregas_agendadas_ese_dia} entrega(s) ya agendada(s), calificación ${elegida.calificacion}/5.0).`
+
+  return { opcionElegida: elegida, razon }
 }
 
 /**
@@ -171,21 +217,35 @@ RAZÓN: [explicación breve en 1-2 oraciones en español, mencionando la cercan�
     }
   }
 
-  // Fallback: elegir la ruta más compacta (menor distancia de referencia y menor carga ese día)
-  const mejorOpcion = opciones.slice().sort((a, b) =>
-    ((a.distancia_ruta_km ?? Infinity) + a.entregas_agendadas_ese_dia * 5) -
-    ((b.distancia_ruta_km ?? Infinity) + b.entregas_agendadas_ese_dia * 5)
-  )[0]
+  // ¿Gemini nos dio un nombre que de verdad coincide con un repartidor real
+  // de la lista? Si sí, confiamos en su elección. Si no (no respondió, dio
+  // 429/503 tras los 3 intentos, o devolvió un nombre que no existe),
+  // recurrimos al MISMO criterio de prioridad por reglas — así el pedido
+  // siempre queda asignado a alguien sensato, nunca "pendiente" por un
+  // problema externo de disponibilidad de la IA.
+  const driverPorNombreIA = nombreElegido
+    ? repartidores.find((r) => r.nombre.toLowerCase().includes(nombreElegido.toLowerCase().split(' ')[0]))
+    : null
 
-  const driverElegido = nombreElegido
-    ? repartidores.find((r) => r.nombre.toLowerCase().includes(nombreElegido.toLowerCase().split(' ')[0])) || repartidores.find((r) => String(r._id) === mejorOpcion.driver_id)
-    : repartidores.find((r) => String(r._id) === mejorOpcion.driver_id)
+  let driverElegido, opcionElegida, razonFinal
 
-  const opcionElegida = opciones.find((o) => o.driver_id === String(driverElegido._id)) || mejorOpcion
+  if (driverPorNombreIA) {
+    driverElegido = driverPorNombreIA
+    opcionElegida = opciones.find((o) => o.driver_id === String(driverElegido._id))
+    razonFinal = razon || 'Mejor balance entre cercanía a su ruta del día y carga de trabajo'
+  } else {
+    if (nombreElegido) {
+      console.warn(`[asignarRepartidor] Gemini respondió "${nombreElegido}" pero no coincide con ningún repartidor activo de este CEDIS — usando fallback por reglas`)
+    }
+    const { opcionElegida: opcionFallback, razon: razonFallback } = elegirMejorPorHeuristica(opciones)
+    opcionElegida = opcionFallback
+    driverElegido = repartidores.find((r) => String(r._id) === opcionElegida.driver_id)
+    razonFinal = razonFallback
+  }
 
   return {
     driver: driverElegido,
-    razon: razon || 'Mejor balance entre cercanía a su ruta del día y carga de trabajo',
+    razon: razonFinal,
     distancia_km: opcionElegida.distancia_ruta_km,
     entregas_agendadas_ese_dia: opcionElegida.entregas_agendadas_ese_dia,
     fecha_entrega: fechaEntrega,
