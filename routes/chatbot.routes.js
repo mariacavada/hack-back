@@ -9,6 +9,7 @@ const {
   indexProductsEndpoint,
   indexFAQEndpoint,
   indexSubstitutionsEndpoint,
+  indexInventoryEndpoint,
 } = require('../controllers/chatbot.controllers')
 
 const router = Router()
@@ -29,5 +30,6 @@ router.post('/index/order/:order_id', requireRole('admin'), indexOrderEndpoint)
 router.post('/index/products', requireRole('admin'), indexProductsEndpoint)
 router.post('/index/faq', requireRole('admin'), indexFAQEndpoint)
 router.post('/index/customer/:customer_id/substitutions', requireRole('admin'), indexSubstitutionsEndpoint)
+router.post('/index/inventory/:cedis_id', requireRole('admin'), indexInventoryEndpoint)
 
 module.exports = router

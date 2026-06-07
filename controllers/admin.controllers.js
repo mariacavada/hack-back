@@ -324,6 +324,10 @@ const restockCedis = async (req, res) => {
 
     const updated = results.filter(Boolean).length
     res.json({ message: `Restock aplicado: ${updated} producto(s) actualizados`, cedis_id, total: updated })
+
+    // Re-indexar inventario en RAG en background
+    const { indexInventory } = require('../services/rag/indexer.service')
+    setImmediate(() => indexInventory(cedis_id).catch(e => console.error('[RAG restock]', e.message)))
   } catch (err) {
     res.status(500).json({ message: 'Error al aplicar restock', error: err.message })
   }

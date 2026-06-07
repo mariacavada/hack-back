@@ -20,6 +20,7 @@ const OrderDetail = require('../../models/OrderDetail.model')
 const Product = require('../../models/Product.model')
 const SubstitutionLog = require('../../models/SubstitutionLog.model')
 const TrackingPedido = require('../../models/TrackingPedido.model')
+const InventarioCedis = require('../../models/InventarioCedis.model')
 
 // ── PEDIDOS ───────────────────────────────────────────────────────────────────
 
@@ -205,4 +206,64 @@ async function indexFAQ() {
   console.log('[RAG] FAQs indexadas')
 }
 
-module.exports = { indexOrder, indexAllProducts, indexCustomerSubstitutions, indexFAQ }
+// ── INVENTARIO DEL CEDIS ──────────────────────────────────────────────────────
+
+/**
+ * Indexa el inventario completo de un cedis para que Gemini pueda responder
+ * preguntas sobre disponibilidad, stock bajo y riesgo de agotamiento.
+ */
+async function indexInventory(cedis_id) {
+  const items = await InventarioCedis.find({ cedis_id }).lean()
+  if (!items.length) return
+
+  // Enriquecer con nombre del producto
+  const skus = items.map(i => i.sku)
+  const products = await Product.find({ sku: { $in: skus } }).select('sku nombre categoria').lean()
+  const prodMap = Object.fromEntries(products.map(p => [p.sku, p]))
+
+  const criticos   = items.filter(i => i.stock_disponible <= i.stock_critico)
+  const bajos      = items.filter(i => i.stock_disponible > i.stock_critico && i.stock_disponible <= i.stock_minimo)
+  const normales   = items.filter(i => i.stock_disponible > i.stock_minimo)
+
+  const formatItem = (i) => {
+    const p = prodMap[i.sku]
+    return `- ${p?.nombre || i.sku} (SKU: ${i.sku}): ${i.stock_disponible} uds disponibles${i.stock_reservado ? `, ${i.stock_reservado} reservadas` : ''}`
+  }
+
+  const text = `Inventario del CEDIS ${cedis_id} — actualizado ${new Date().toLocaleString('es-MX')}
+
+STOCK CRÍTICO (≤${criticos[0]?.stock_critico ?? 10} uds) — requiere reabastecimiento urgente:
+${criticos.length ? criticos.map(formatItem).join('\n') : '- Ninguno en nivel crítico'}
+
+STOCK BAJO (≤${bajos[0]?.stock_minimo ?? 20} uds) — monitorear:
+${bajos.length ? bajos.map(formatItem).join('\n') : '- Ninguno en nivel bajo'}
+
+STOCK NORMAL:
+${normales.map(formatItem).join('\n')}
+
+RESUMEN: ${items.length} productos totales | ${criticos.length} críticos | ${bajos.length} bajos | ${normales.length} normales`
+
+  const embedding = await embedText(text)
+
+  await KnowledgeChunk.findOneAndUpdate(
+    { source: 'inventory', source_id: cedis_id },
+    {
+      source: 'inventory',
+      source_id: cedis_id,
+      text,
+      metadata: {
+        cedis_id,
+        total_productos: items.length,
+        criticos: criticos.length,
+        bajos: bajos.length,
+      },
+      embedding,
+      updated_at: new Date(),
+    },
+    { upsert: true }
+  )
+
+  console.log(`[RAG] Inventario indexado para cedis ${cedis_id}: ${items.length} productos`)
+}
+
+module.exports = { indexOrder, indexAllProducts, indexCustomerSubstitutions, indexFAQ, indexInventory }
