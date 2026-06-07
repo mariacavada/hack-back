@@ -19,12 +19,39 @@ const createOrder = async (req, res) => {
   let idPedidoReservado = null
 
   try {
-    const { items, cedis_id, subtotal, total, ...rest } = req.body
+    const { items, cedis_id, subtotal, total, fecha_entrega, ...rest } = req.body
     if (!items?.length) return res.status(400).json({ message: 'El pedido debe tener al menos 1 producto' })
     if (!cedis_id) return res.status(400).json({ message: 'cedis_id es requerido' })
 
+    // El cliente DEBE elegir cuándo quiere su pedido — y debe ser una fecha
+    // realista: ni "para ahorita" (necesitamos tiempo para preparar/agendar
+    // ruta) ni tan lejana que no podamos planear con sentido. Usamos el mismo
+    // criterio de 3 días que el lead time de reabastecimiento del CEDIS.
+    if (!fecha_entrega) {
+      return res.status(400).json({ message: 'fecha_entrega es requerida (fecha en la que quieres recibir tu pedido)' })
+    }
+    const fechaEntregaDate = new Date(fecha_entrega)
+    if (isNaN(fechaEntregaDate.getTime())) {
+      return res.status(400).json({ message: 'fecha_entrega no es una fecha válida (usa formato ISO, ej. "2026-06-12")' })
+    }
+    const HOY = new Date()
+    const MIN_DIAS_ANTICIPACION = 3
+    const MAX_DIAS_ANTICIPACION = 14
+    const minFecha = new Date(HOY.getTime() + MIN_DIAS_ANTICIPACION * 24 * 60 * 60 * 1000)
+    const maxFecha = new Date(HOY.getTime() + MAX_DIAS_ANTICIPACION * 24 * 60 * 60 * 1000)
+    if (fechaEntregaDate < minFecha) {
+      return res.status(400).json({
+        message: `La fecha de entrega debe ser al menos ${MIN_DIAS_ANTICIPACION} días después de hoy (lo más pronto posible: ${minFecha.toISOString().slice(0, 10)})`,
+      })
+    }
+    if (fechaEntregaDate > maxFecha) {
+      return res.status(400).json({
+        message: `Solo se pueden agendar entregas hasta ${MAX_DIAS_ANTICIPACION} días por adelantado (lo más tarde posible: ${maxFecha.toISOString().slice(0, 10)})`,
+      })
+    }
+
     const id_pedido = `PED-${Date.now()}`
-    console.log('[createOrder] 1 - creando order con id_pedido:', id_pedido)
+    console.log('[createOrder] 1 - creando order con id_pedido:', id_pedido, '| entrega solicitada:', fechaEntregaDate.toISOString().slice(0, 10))
 
     // 1. Apartar stock del CEDIS de forma atómica — nunca debe quedar en negativo.
     //    Si no alcanza para algún SKU, se rechaza el pedido (y se revierte lo
@@ -56,6 +83,7 @@ const createOrder = async (req, res) => {
       total,
       status_final: 'pendiente',
       fecha_pedido: new Date().toISOString(),
+      fecha_entrega: fechaEntregaDate,
       ...rest,
     })
     console.log('[createOrder] 2 - order creado:', order._id)
@@ -95,13 +123,17 @@ const createOrder = async (req, res) => {
     // Asignación automática de repartidor con Gemini (no bloquea la respuesta)
     res.status(201).json({ message: 'Pedido creado', order, detalles })
 
-    // Ejecutar asignación en background después de responder
+    // Ejecutar asignación en background después de responder.
+    // Ahora se basa en la FECHA DE ENTREGA elegida por el cliente y en su
+    // UBICACIÓN comparada contra la ruta que cada repartidor ya tiene
+    // agendada para ese día — no en "quién está más cerca ahora mismo"
+    // (ver services/maps/assign.service.js para el detalle del rediseño).
     setImmediate(async () => {
       try {
         const customer = await Customer.findById(order.customer_id).lean()
         const ubicacionCliente = customer?.ubicacion || { lat: 25.6866, lng: -100.3161, direccion: 'Monterrey, NL', municipio: 'Monterrey' }
 
-        const { driver, razon, eta_minutos, distancia_km } = await asignarRepartidor(order, ubicacionCliente)
+        const { driver, razon, distancia_km, entregas_agendadas_ese_dia } = await asignarRepartidor(order, ubicacionCliente)
 
         // Actualizar pedido con el repartidor asignado
         await Order.findByIdAndUpdate(order._id, {
@@ -109,6 +141,8 @@ const createOrder = async (req, res) => {
           status_final: 'asignado',
           assigned_at: new Date(),
         })
+
+        const fechaTxt = fechaEntregaDate.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' })
 
         // Agregar evento al tracking
         await TrackingPedido.findOneAndUpdate(
@@ -118,24 +152,26 @@ const createOrder = async (req, res) => {
             $push: {
               eventos: {
                 status: 'asignado',
-                descripcion: `Repartidor asignado: ${driver.nombre}. ETA: ${eta_minutos} min. ${razon}`,
+                descripcion: `Repartidor asignado: ${driver.nombre} para el ${fechaTxt} (ya tiene ${entregas_agendadas_ese_dia} entrega(s) agendada(s) ese día). ${razon}`,
                 driver_id: driver._id,
               },
             },
           }
         )
 
-        // Notificar al cliente
+        // Notificar al cliente — OJO: Notification.customer_id es requerido
+        // (ObjectId ref Customer); usar otros nombres de campo aquí falla
+        // silenciosamente (mismo bug que ya corregimos en stockPredict.service)
         await Notification.create({
-          user_id: order.customer_id,
-          user_model: 'Customer',
+          customer_id: order.customer_id,
+          id_pedido: order.id_pedido,
+          tipo: 'order_status',
           titulo: '🚚 Repartidor asignado',
-          mensaje: `${driver.nombre} llevará tu pedido. Llegada estimada: ${eta_minutos} minutos (${distancia_km} km).`,
-          tipo: 'entrega',
+          mensaje: `${driver.nombre} llevará tu pedido el ${fechaTxt}${distancia_km != null ? ` (ruta cercana a otras ${entregas_agendadas_ese_dia} entregas de ese día)` : ''}.`,
           prioridad: 'media',
         })
 
-        console.log(`[createOrder] Repartidor asignado automáticamente: ${driver.nombre} → ${order.id_pedido}`)
+        console.log(`[createOrder] Repartidor asignado: ${driver.nombre} → ${order.id_pedido} (entrega ${fechaTxt})`)
       } catch (e) {
         console.error('[createOrder] Error en asignación automática:', e.message)
       }
