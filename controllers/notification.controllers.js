@@ -1,4 +1,5 @@
 const Notification = require('../models/Notification.model')
+const { sendWhatsAppMessage } = require('../services/whatsapp.service')
 
 // GET /api/notifications
 // Mis notificaciones (paginadas, últimas primero)
@@ -51,4 +52,20 @@ const markAllAsRead = async (req, res) => {
   }
 }
 
-module.exports = { getMyNotifications, markAsRead, markAllAsRead }
+// POST /api/notifications/whatsapp
+// Manda un mensaje de WhatsApp a un número arbitrario (ej. "+5218182083986")
+const sendWhatsApp = async (req, res) => {
+  try {
+    const { telefono, mensaje } = req.body
+    if (!telefono || !mensaje) {
+      return res.status(400).json({ message: 'Faltan los campos telefono y mensaje' })
+    }
+
+    const result = await sendWhatsAppMessage(telefono, mensaje)
+    res.json({ message: 'Mensaje enviado', sid: result.sid, status: result.status })
+  } catch (err) {
+    res.status(500).json({ message: 'Error al enviar WhatsApp', error: err.message })
+  }
+}
+
+module.exports = { getMyNotifications, markAsRead, markAllAsRead, sendWhatsApp }
