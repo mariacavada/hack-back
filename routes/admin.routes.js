@@ -17,6 +17,7 @@ const {
   getDriverTodayRoute,
   getUserOrders,
   restockCedis,
+  getStats,
 } = require('../controllers/admin.controllers')
 
 const router = Router()
@@ -25,6 +26,9 @@ router.use(verifyToken, requireRole('admin'))
 // Usuarios
 router.get('/users', getAllUsers)
 router.get('/users/:id', getUserById)
+
+// Stats
+router.get('/stats', getStats)
 
 // Pedidos
 router.get('/orders', getAllOrders)

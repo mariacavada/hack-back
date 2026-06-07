@@ -305,6 +305,52 @@ const getDriverTodayRoute = async (req, res) => {
   }
 }
 
+// GET /api/admin/stats
+const getStats = async (req, res) => {
+  try {
+    const hoy = new Date(); hoy.setHours(0,0,0,0)
+    const ayer = new Date(hoy.getTime() - 86400000)
+
+    const [statusCounts, todayOrders, yesterdayOrders, totalRevenue] = await Promise.all([
+      // Conteo por status
+      Order.aggregate([{ $group: { _id: '$status_final', count: { $sum: 1 } } }]),
+      // Pedidos de hoy
+      Order.countDocuments({ created_at: { $gte: hoy } }),
+      // Pedidos de ayer
+      Order.countDocuments({ created_at: { $gte: ayer, $lt: hoy } }),
+      // Revenue total entregados
+      Order.aggregate([
+        { $match: { status_final: 'entregado' } },
+        { $group: { _id: null, total: { $sum: '$total' } } }
+      ]),
+    ])
+
+    const byStatus = {}
+    statusCounts.forEach(s => { byStatus[s._id] = s.count })
+
+    const total = Object.values(byStatus).reduce((a, b) => a + b, 0)
+    const entregados = byStatus['entregado'] || 0
+    const activos = (byStatus['asignado'] || 0) + (byStatus['recibido'] || 0) + (byStatus['preparando'] || 0) + (byStatus['en_camino'] || 0)
+    const pendientes = (byStatus['pendiente'] || 0) + (byStatus['confirmado'] || 0)
+
+    res.json({
+      total,
+      hoy: todayOrders,
+      ayer: yesterdayOrders,
+      por_status: byStatus,
+      activos,
+      pendientes,
+      entregados,
+      cancelados: byStatus['cancelado'] || 0,
+      incompletos: byStatus['incompleto'] || 0,
+      nivel_servicio: total > 0 ? +((entregados / total) * 100).toFixed(1) : 0,
+      revenue_total: totalRevenue[0]?.total ?? 0,
+    })
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
 // POST /api/admin/inventory/restock
 const restockCedis = async (req, res) => {
   try {
@@ -348,4 +394,5 @@ module.exports = {
   getDriverOrders,
   getDriverTodayRoute,
   restockCedis,
+  getStats,
 }
