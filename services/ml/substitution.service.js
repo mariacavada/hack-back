@@ -112,10 +112,17 @@ Responde ÚNICAMENTE con JSON válido (sin markdown):
   // WhatsApp al cliente si tiene teléfono
   console.log('[WA sustitucion] telefono:', cliente?.telefono, '| sugerencias:', result.sugerencias?.length)
   if (cliente?.telefono) {
-    const sugerenciasTxt = (result.sugerencias || [])
-      .map((s, i) => `${i + 1}. ${s.nombre} $${s.precio} — ${s.razon}`)
-      .join('\n')
-    const wa = `⚠️ *Novedad en tu pedido*\n\n${mensajeNotif}\n\n*Opciones sugeridas:*\n${sugerenciasTxt}\n\nResponde a tu asesor si deseas confirmar una sustitución.`
+    const mejor = result.sugerencias?.[0]
+    const productoSustituto = mejor ? `*${mejor.nombre}*` : 'un producto similar'
+    const wa = [
+      `Hola, *${cliente.nombre_negocio}* 👋`,
+      `Te informamos que el producto *${productoOriginal?.nombre ?? original_sku}* no está disponible en tu pedido de hoy.`,
+      `Para no retrasar tu entrega, lo hemos sustituido por ${productoSustituto}, que es la opción más similar disponible y se ajusta mejor a tu historial de compras.`,
+      `Tu pedido llegará en la fecha acordada sin ningún cambio adicional. 🚚`,
+      `— *Equipo Ctrl+She*`,
+      `_Este es un mensaje automático, por favor no responder._`,
+    ].join('\n')
+
     sendWhatsAppMessage(cliente.telefono, wa)
       .then(m => console.log('[WA sustitucion] OK sid:', m.sid))
       .catch(e => console.error('[WA sustitucion] ERROR:', e.message))
