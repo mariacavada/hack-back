@@ -165,11 +165,40 @@ async function alertAdminsWhatsApp(prediction, geminiResult) {
 }
 
 /**
- * Corre predicción para todos los productos de un cedis
+ * Corre predicción solo para los productos de un cedis que YA muestran
+ * señales de riesgo — no para el catálogo completo.
+ *
+ * Por qué: un CEDIS puede tener ~130 SKUs. predictStockDepletion llama a
+ * Gemini una vez por SKU (y potencialmente otra para la alerta de WhatsApp);
+ * en secuencia eso son minutos — Railway corta la conexión a los ~30s (502,
+ * y sin headers de respuesta el navegador lo reporta como error de CORS), y
+ * además la cuota gratuita de Gemini (20 requests/día) se agota de inmediato.
+ *
+ * Filtramos a nivel de base de datos los SKUs cuyo stock disponible ya está
+ * cerca de su mínimo — son los únicos que de verdad necesitan que Gemini
+ * piense "¿cuándo y cuánto reordenar?". El resto (con stock sano) no aporta
+ * nada analizarlo ahora mismo; se vuelve a evaluar la próxima vez que baje.
+ *
  * @param {string} cedis_id
+ * @param {number} [margen=1.5] - qué tan por encima del stock_minimo ya
+ *   se considera "candidato a revisar" (1.5 = hasta 50% por encima del mínimo)
  */
-async function predictAllStockForCedis(cedis_id) {
-  const items = await InventarioCedis.find({ cedis_id }).select('sku')
+async function predictAllStockForCedis(cedis_id, margen = 1.5) {
+  const items = await InventarioCedis.find({
+    cedis_id,
+    $expr: {
+      $lte: [
+        '$stock_disponible',
+        // Si stock_minimo es 0 (no configurado), usamos un piso razonable
+        // de 10 unidades para no dejar pasar SKUs sin mínimo definido ni
+        // tampoco marcar como "en riesgo" el catálogo entero.
+        { $multiply: [{ $cond: [{ $gt: ['$stock_minimo', 0] }, '$stock_minimo', 10] }, margen] },
+      ],
+    },
+  }).select('sku stock_disponible stock_minimo')
+
+  console.log(`[predictAllStockForCedis] ${cedis_id}: ${items.length} SKU(s) en riesgo de los analizados (de los que tienen inventario registrado)`)
+
   const results = []
   for (const item of items) {
     try {
