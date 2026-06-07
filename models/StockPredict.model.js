@@ -9,6 +9,10 @@ const StockPredictSchema = new Schema(
     demanda_diaria_predicha: Number,
     dias_estimados_agotamiento: Number,
     fecha_agotamiento_predicha: { type: Date, default: null },
+    // Cuánto tarda en llegar el reabastecimiento del proveedor (3-5 días) y
+    // para cuándo hay que hacer el pedido para que llegue ANTES de agotarse.
+    tiempo_entrega_dias: { type: Number, default: 4 },
+    fecha_limite_pedido: { type: Date, default: null },
     cantidad_reorden_sugerida: { type: Number, default: 0 },
     nivel_alerta: {
       type: String,
