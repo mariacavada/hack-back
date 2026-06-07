@@ -9,6 +9,12 @@ const CedisSchema = new Schema(
     direccion: String,
     telefono: String,
     id_businessunit: Number,
+    ubicacion: {
+      lat:       { type: Number },
+      lng:       { type: Number },
+      direccion: { type: String },
+      municipio: { type: String },
+    },
     estado: { type: String, default: 'activo' },
   },
   { timestamps: { createdAt: 'created_at' } }

@@ -254,6 +254,57 @@ const uploadProductPhoto = async (req, res) => {
   }
 }
 
+// GET /api/admin/users/:userId/orders
+const getUserOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ customer_id: req.params.userId }).sort({ created_at: -1 }).lean()
+    const result = await Promise.all(orders.map(async (o) => {
+      const detalles = await OrderDetail.find({ id_pedido: o.id_pedido }).lean()
+      return { ...o, items: detalles.map(d => ({ sku: d.sku_solicitado, nombre: d.nombre_sku_solicitado, cantidad: d.quantity })) }
+    }))
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
+// GET /api/admin/drivers/:driverId
+const getDriverById = async (req, res) => {
+  try {
+    const driver = await Driver.findById(req.params.driverId).select('-password_hash').lean()
+    if (!driver) return res.status(404).json({ message: 'Repartidor no encontrado' })
+    const pedidosActivos = await Order.countDocuments({ driver_id: driver._id, status_final: { $in: ['asignado', 'en_camino'] } })
+    res.json({ ...driver, pedidos_activos: pedidosActivos })
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
+// GET /api/admin/drivers/:driverId/orders
+const getDriverOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ driver_id: req.params.driverId }).sort({ created_at: -1 }).lean()
+    res.json(orders)
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
+// GET /api/admin/drivers/:driverId/route/today
+const getDriverTodayRoute = async (req, res) => {
+  try {
+    const DeliveryRoute = require('../models/DeliveryRoute.model')
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+    const ruta = await DeliveryRoute.findOne({ driver_id: req.params.driverId, fecha: { $gte: hoy } })
+      .populate('driver_id', 'nombre email telefono vehiculo_placa ubicacion_actual')
+      .lean()
+    if (!ruta) return res.status(404).json({ message: 'No hay ruta activa hoy para este repartidor' })
+    res.json(ruta)
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -264,4 +315,8 @@ module.exports = {
   getLowStock,
   getDepletionRisk,
   uploadProductPhoto,
+  getUserOrders,
+  getDriverById,
+  getDriverOrders,
+  getDriverTodayRoute,
 }

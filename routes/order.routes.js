@@ -1,7 +1,7 @@
 const { Router } = require('express')
 const verifyToken = require('../utils/jwt')
 const requireRole = require('../middleware/requireRole')
-const { createOrder, getMyOrders, getOrderDetail, respondSubstitution } = require('../controllers/order.controllers')
+const { createOrder, getMyOrders, getOrderDetail, respondSubstitution, getOrderStatus, updateOrderStatusAdmin, markDelivered } = require('../controllers/order.controllers')
 
 const router = Router()
 router.use(verifyToken)
@@ -17,5 +17,14 @@ router.get('/:id', requireRole('customer', 'admin', 'driver'), getOrderDetail)
 
 // Responder sustitución (customer)
 router.patch('/:id/substitution', requireRole('customer'), respondSubstitution)
+
+// Estado resumido del pedido (customer)
+router.get('/:id/status', requireRole('customer', 'admin', 'driver'), getOrderStatus)
+
+// Admin actualiza estado
+router.patch('/:id/status', requireRole('admin'), updateOrderStatusAdmin)
+
+// Repartidor marca entrega
+router.patch('/:id/deliver', requireRole('driver'), markDelivered)
 
 module.exports = router

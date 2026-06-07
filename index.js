@@ -13,7 +13,9 @@ const driverRoutes = require('./routes/driver.routes')
 const notificationRoutes = require('./routes/notification.routes')
 const dashboardRoutes = require('./routes/dashboard.routes')
 const chatbotRoutes = require('./routes/chatbot.routes')
-const aiRoutes = require('./routes/ai.routes')
+const aiRoutes  = require('./routes/ai.routes')
+const mapRoutes   = require('./routes/map.routes')
+const routeRoutes = require('./routes/route.routes')
 
 const app  = express()
 const PORT = process.env.PORT || 4000
@@ -49,6 +51,8 @@ app.use('/api/notifications', notificationRoutes)
 app.use('/api', dashboardRoutes)
 app.use('/api/chatbot', chatbotRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/map',    mapRoutes)
+app.use('/api/routes', routeRoutes)
 
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`)
