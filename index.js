@@ -27,7 +27,7 @@ const allowedOrigins = [
   'http://localhost:5173',   // Vite default
   'http://localhost:4173',   // Vite preview
   process.env.FRONTEND_URL,  // production (set in .env)
-  'https://hack-gln0thuj4-maria-c-c-f.vercel.app', // Vercel preview deploy
+  'https://hack-web-8nhk-git-chatbot-maria-c-c-f.vercel.app/', // Vercel preview deploy
 ].filter(Boolean)
 
 app.use(cors({
