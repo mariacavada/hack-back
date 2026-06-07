@@ -71,32 +71,47 @@ ETA: [número de minutos]
 DISTANCIA: [número de km]
 `
 
-  const respuesta = await askGeminiText(prompt)
+  // 5. Llamar Gemini con retry y fallback por distancia
+  let nombreElegido = null, razon = null, etaGemini = null, distGemini = null
 
-  // 5. Parsear respuesta de Gemini
-  const lines = respuesta.split('\n').map(l => l.trim()).filter(Boolean)
-  const get = (prefix) => {
-    const line = lines.find(l => l.toUpperCase().startsWith(prefix.toUpperCase()))
-    return line ? line.split(':').slice(1).join(':').trim() : null
+  for (let intento = 1; intento <= 3; intento++) {
+    try {
+      const respuesta = await askGeminiText(prompt)
+      const lines = respuesta.split('\n').map(l => l.trim()).filter(Boolean)
+      const get = (prefix) => {
+        const line = lines.find(l => l.toUpperCase().startsWith(prefix.toUpperCase()))
+        return line ? line.split(':').slice(1).join(':').trim() : null
+      }
+      nombreElegido = get('REPARTIDOR')
+      razon         = get('RAZÓN') || get('RAZON')
+      etaGemini     = parseInt(get('ETA')) || null
+      distGemini    = parseFloat(get('DISTANCIA')) || null
+      break
+    } catch (e) {
+      if (intento === 3) {
+        console.warn('[asignarRepartidor] Gemini no disponible, usando fallback por distancia:', e.message)
+      } else {
+        await new Promise(r => setTimeout(r, 1500 * intento))
+      }
+    }
   }
 
-  const nombreElegido = get('REPARTIDOR')
-  const razon         = get('RAZÓN') || get('RAZON')
-  const etaGemini     = parseInt(get('ETA')) || null
-  const distGemini    = parseFloat(get('DISTANCIA')) || null
+  // Fallback: elegir por menor distancia y menor carga si Gemini falla
+  const mejorOpcion = opciones.sort((a, b) =>
+    (a.eta_minutos + a.pedidos_activos * 5) - (b.eta_minutos + b.pedidos_activos * 5)
+  )[0]
 
-  // Buscar el driver que coincide con el nombre
-  const driverElegido = repartidores.find(r =>
-    nombreElegido && r.nombre.toLowerCase().includes(nombreElegido.toLowerCase().split(' ')[0])
-  ) || repartidores[0]
+  const driverElegido = nombreElegido
+    ? repartidores.find(r => r.nombre.toLowerCase().includes(nombreElegido.toLowerCase().split(' ')[0])) || repartidores.find(r => String(r._id) === mejorOpcion.driver_id)
+    : repartidores.find(r => String(r._id) === mejorOpcion.driver_id)
 
-  const opcionElegida = opciones.find(o => o.driver_id === String(driverElegido._id)) || opciones[0]
+  const opcionElegida = opciones.find(o => o.driver_id === String(driverElegido._id)) || mejorOpcion
 
   return {
-    driver:       driverElegido,
-    razon:        razon || 'Mejor balance entre distancia y disponibilidad',
-    eta_minutos:  etaGemini  || opcionElegida.eta_minutos,
-    distancia_km: distGemini || opcionElegida.distancia_km,
+    driver:         driverElegido,
+    razon:          razon || `Asignado por proximidad: ${opcionElegida.distancia_km} km`,
+    eta_minutos:    etaGemini  || opcionElegida.eta_minutos,
+    distancia_km:   distGemini || opcionElegida.distancia_km,
     todas_opciones: opciones,
   }
 }
