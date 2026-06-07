@@ -42,36 +42,46 @@ const getAssignedOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, coords, notas } = req.body
-    const allowed = ['en_camino', 'entregado', 'incompleto']
+    const allowed = ['recibido', 'preparando', 'en_camino', 'entregado', 'incompleto']
     if (!allowed.includes(status)) {
       return res.status(400).json({ message: `Estado inválido. Opciones: ${allowed.join(', ')}` })
     }
 
+    const mongoose = require('mongoose')
+    const driverId = mongoose.Types.ObjectId.isValid(req.decoded.id)
+      ? new mongoose.Types.ObjectId(req.decoded.id)
+      : req.decoded.id
+
     const order = await Order.findOneAndUpdate(
-      { _id: req.params.id, driver_id: req.decoded.id },
-      { status_final: status },
+      { _id: req.params.id, driver_id: driverId },
+      {
+        status_final: status,
+        ...(status === 'entregado' || status === 'incompleto' ? { delivered_at: new Date() } : {}),
+      },
       { new: true }
     )
     if (!order) return res.status(404).json({ message: 'Pedido no encontrado o no asignado a ti' })
 
-    // Mensajes por estado
     const descripciones = {
-      en_camino: 'El repartidor está en camino',
-      entregado: 'Pedido entregado exitosamente',
+      recibido:   'El repartidor recibió el pedido',
+      preparando: 'El pedido se está preparando',
+      en_camino:  'El repartidor está en camino',
+      entregado:  'Pedido entregado exitosamente',
       incompleto: `Pedido entregado con diferencias. ${notas || ''}`,
     }
 
-    // Actualizar tracking con coords en tiempo real
+    const titulos = {
+      recibido:   '📦 Pedido recibido por el repartidor',
+      preparando: '🔄 Preparando tu pedido',
+      en_camino:  '🚀 Tu pedido está en camino',
+      entregado:  '✅ ¡Pedido entregado!',
+      incompleto: '⚠️ Pedido entregado con diferencias',
+    }
+
     await TrackingPedido.findOneAndUpdate(
       { id_pedido: order.id_pedido },
       {
-        $push: {
-          eventos: {
-            status,
-            descripcion: descripciones[status],
-            coords: coords || null,
-          },
-        },
+        $push: { eventos: { status, descripcion: descripciones[status], coords: coords || null } },
         status_actual: status,
         localizacion_actual: coords || null,
         ...(status === 'entregado' || status === 'incompleto' ? { eta_entrega: new Date() } : {}),
@@ -79,14 +89,9 @@ const updateOrderStatus = async (req, res) => {
       { upsert: true }
     )
 
-    // Notificar al cliente
-    const titulos = {
-      en_camino: '🚀 Tu pedido está en camino',
-      entregado: '✅ ¡Pedido entregado!',
-      incompleto: '⚠️ Pedido entregado con diferencias',
-    }
     await Notification.create({
-      customer_id: order.customer_id,
+      user_id: String(order.customer_id),
+      user_model: 'Customer',
       id_pedido: order.id_pedido,
       tipo: 'order_status',
       titulo: titulos[status],
@@ -94,7 +99,7 @@ const updateOrderStatus = async (req, res) => {
       prioridad: status === 'incompleto' ? 'alta' : 'media',
     })
 
-    res.json({ message: 'Estado actualizado', order })
+    res.json({ message: 'Estado actualizado', status, order })
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message })
   }

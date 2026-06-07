@@ -18,7 +18,7 @@ const OrderSchema = new Schema(
     notes:                 { type: String, default: null },
     status_final: {
       type: String,
-      enum: ['pendiente', 'confirmado', 'asignado', 'en_camino', 'entregado', 'incompleto', 'cancelado'],
+      enum: ['pendiente', 'confirmado', 'asignado', 'recibido', 'preparando', 'en_camino', 'entregado', 'incompleto', 'cancelado'],
       default: 'pendiente',
       index: true,
     },
