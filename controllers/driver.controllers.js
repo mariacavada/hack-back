@@ -6,6 +6,7 @@ const Notification = require('../models/Notification.model')
 const Driver = require('../models/Driver.model')
 const Customer = require('../models/Customer.model')
 const { askGemini } = require('../utils/gemini')
+const { sendWhatsAppMessage } = require('../services/whatsapp.service')
 
 // GET /api/driver/orders
 // Ver pedidos asignados al repartidor logueado
@@ -90,13 +91,25 @@ const updateOrderStatus = async (req, res) => {
     )
 
     await Notification.create({
-      user_id: String(order.customer_id),
-      user_model: 'Customer',
+      customer_id: String(order.customer_id),
       id_pedido: order.id_pedido,
       tipo: 'order_status',
       titulo: titulos[status],
       mensaje: descripciones[status],
       prioridad: status === 'incompleto' ? 'alta' : 'media',
+    })
+
+    // WhatsApp al cliente
+    setImmediate(async () => {
+      try {
+        const customer = await Customer.findById(order.customer_id).select('telefono nombre_negocio').lean()
+        if (customer?.telefono) {
+          const wa = `${titulos[status]}\n\n${descripciones[status]}\n\nPedido: ${order.id_pedido}`
+          await sendWhatsAppMessage(customer.telefono, wa)
+        }
+      } catch (e) {
+        console.error('[WA status]', e.message)
+      }
     })
 
     res.json({ message: 'Estado actualizado', status, order })

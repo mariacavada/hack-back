@@ -15,6 +15,7 @@ const SubstitutionLog = require('../../models/SubstitutionLog.model')
 const Product = require('../../models/Product.model')
 const Notification = require('../../models/Notification.model')
 const Customer = require('../../models/Customer.model')
+const { sendWhatsAppMessage } = require('../whatsapp.service')
 
 /**
  * Sugiere sustitutos para un producto agotado, personalizado por cliente.
@@ -97,14 +98,25 @@ Responde ÚNICAMENTE con JSON válido (sin markdown):
   const result = await askGemini(prompt)
 
   // 6. Notificar al cliente
+  const mensajeNotif = result.mensaje || `El producto ${productoOriginal?.nombre} no está disponible. Te sugerimos una alternativa.`
+
   await Notification.create({
     customer_id: String(customer_id),
     titulo: '⚠️ Novedad en tu pedido',
-    mensaje: result.mensaje || `El producto ${productoOriginal?.nombre} no está disponible. Te sugerimos una alternativa.`,
+    mensaje: mensajeNotif,
     tipo: 'sustitucion',
     prioridad: 'alta',
     metadata: { original_sku, order_id, sugerencias: result.sugerencias },
   })
+
+  // WhatsApp al cliente si tiene teléfono
+  if (cliente?.telefono) {
+    const sugerenciasTxt = (result.sugerencias || [])
+      .map((s, i) => `${i + 1}. ${s.nombre} $${s.precio} — ${s.razon}`)
+      .join('\n')
+    const wa = `⚠️ *Novedad en tu pedido*\n\n${mensajeNotif}\n\n*Opciones sugeridas:*\n${sugerenciasTxt}\n\nResponde a tu asesor si deseas confirmar una sustitución.`
+    sendWhatsAppMessage(cliente.telefono, wa).catch(e => console.error('[WA sustitucion]', e.message))
+  }
 
   return result
 }

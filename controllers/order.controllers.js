@@ -9,6 +9,7 @@ const { recordSubstitutionFeedback } = require('../services/ml/substitution.serv
 const { asignarRepartidor } = require('../services/maps/assign.service')
 const { reserveStock, releaseStock } = require('../services/inventory.service')
 const { predictStockDepletion } = require('../services/ml/stockPredict.service')
+const { sendWhatsAppMessage } = require('../services/whatsapp.service')
 
 // POST /api/orders
 // Crear nuevo pedido
@@ -170,6 +171,17 @@ const createOrder = async (req, res) => {
           mensaje: `${driver.nombre} llevará tu pedido el ${fechaTxt}${distancia_km != null ? ` (ruta cercana a otras ${entregas_agendadas_ese_dia} entregas de ese día)` : ''}.`,
           prioridad: 'media',
         })
+
+        // WhatsApp al cliente
+        try {
+          const customer = await Customer.findById(order.customer_id).select('telefono').lean()
+          if (customer?.telefono) {
+            const wa = `🚚 *Repartidor asignado*\n\n${driver.nombre} llevará tu pedido el ${fechaTxt}.\n\nPedido: ${order.id_pedido}`
+            await sendWhatsAppMessage(customer.telefono, wa)
+          }
+        } catch (e) {
+          console.error('[WA asignacion]', e.message)
+        }
 
         console.log(`[createOrder] Repartidor asignado: ${driver.nombre} → ${order.id_pedido} (entrega ${fechaTxt})`)
       } catch (e) {
