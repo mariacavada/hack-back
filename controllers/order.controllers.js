@@ -10,6 +10,7 @@ const { asignarRepartidor } = require('../services/maps/assign.service')
 const { reserveStock, releaseStock } = require('../services/inventory.service')
 const { predictStockDepletion } = require('../services/ml/stockPredict.service')
 const { sendWhatsAppMessage } = require('../services/whatsapp.service')
+const { indexOrder } = require('../services/rag/indexer.service')
 
 // POST /api/orders
 // Crear nuevo pedido
@@ -108,6 +109,10 @@ const createOrder = async (req, res) => {
       eventos: [{ status: 'pendiente', descripcion: 'Pedido recibido' }],
     })
     console.log('[createOrder] 4 - tracking creado')
+
+    // Indexar el pedido en el RAG del chatbot para que el cliente pueda
+    // preguntar por él (no bloquea la respuesta).
+    setImmediate(() => indexOrder(order._id).catch((e) => console.error('[createOrder] indexOrder falló:', e.message)))
 
     // 5. En segundo plano: revisar si el apartado dejó el stock por debajo de
     //    la tendencia esperada y, de ser así, avisar al admin por WhatsApp con
@@ -394,6 +399,8 @@ const updateOrderStatusAdmin = async (req, res) => {
       { upsert: true }
     )
 
+    setImmediate(() => indexOrder(order._id).catch((e) => console.error('[updateOrderStatusAdmin] indexOrder falló:', e.message)))
+
     res.json({ message: 'Estado actualizado', order })
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message })
@@ -431,6 +438,8 @@ const markDelivered = async (req, res) => {
       mensaje:     notes || 'Tu pedido ha sido entregado exitosamente.',
       prioridad:   'media',
     })
+
+    setImmediate(() => indexOrder(order._id).catch((e) => console.error('[markDelivered] indexOrder falló:', e.message)))
 
     res.json({ message: '✅ Pedido marcado como entregado', order })
   } catch (err) {
