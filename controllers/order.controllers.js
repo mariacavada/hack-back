@@ -55,22 +55,33 @@ const createOrder = async (req, res) => {
 }
 
 // GET /api/orders/my
-// Ver mis pedidos con tracking
+// Historial de pedidos del usuario con items
 const getMyOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ customer_id: req.decoded.id })
+    const orders = await Order.find({ customer_id: String(req.decoded.id) })
       .sort({ created_at: -1 })
+      .lean()
 
-    // Adjuntar tracking a cada pedido
-    const withTracking = await Promise.all(
+    const result = await Promise.all(
       orders.map(async (o) => {
-        const tracking = await TrackingPedido.findOne({ id_pedido: o.id_pedido })
-          .select('status_actual eta_entrega eventos localizacion_actual')
-        return { ...o.toObject(), tracking }
+        const detalles = await OrderDetail.find({ id_pedido: o.id_pedido }).lean()
+        return {
+          id_pedido: o.id_pedido,
+          fecha_pedido: o.fecha_pedido,
+          status_final: o.status_final,
+          subtotal: o.subtotal,
+          total: o.total,
+          cedis_id: o.cedis_id,
+          items: detalles.map((d) => ({
+            sku: d.sku_solicitado,
+            nombre: d.nombre_sku_solicitado,
+            cantidad: d.quantity,
+          })),
+        }
       })
     )
 
-    res.json(withTracking)
+    res.json(result)
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message })
   }

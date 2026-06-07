@@ -12,7 +12,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
  * El prompt DEBE pedir explícitamente respuesta en JSON.
  */
 async function askGemini(prompt, timeoutMs = 20000) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
   const geminiCall = model.generateContent(prompt)
   const timeout = new Promise((_, reject) =>
@@ -32,7 +32,7 @@ async function askGemini(prompt, timeoutMs = 20000) {
  * Llama a Gemini y devuelve texto plano (para el chatbot RAG).
  */
 async function askGeminiText(prompt, timeoutMs = 20000) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
   const geminiCall = model.generateContent(prompt)
   const timeout = new Promise((_, reject) =>

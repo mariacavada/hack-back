@@ -73,7 +73,7 @@ module.exports = { retrieve }
  *     {
  *       "type": "vector",
  *       "path": "embedding",
- *       "numDimensions": 768,
+ *       "numDimensions": 3072,
  *       "similarity": "cosine"
  *     },
  *     {
