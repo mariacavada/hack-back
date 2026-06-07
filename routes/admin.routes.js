@@ -16,6 +16,7 @@ const {
   getDriverOrders,
   getDriverTodayRoute,
   getUserOrders,
+  restockCedis,
 } = require('../controllers/admin.controllers')
 
 const router = Router()
@@ -42,6 +43,7 @@ router.get('/drivers/:driverId/route/today',getDriverTodayRoute)
 // Inventario / ML
 router.get('/inventory/low-stock', getLowStock)
 router.get('/inventory/depletion-risk', getDepletionRisk)
+router.post('/inventory/restock', restockCedis)
 
 // Productos
 router.post('/products/:id/photo', upload.single('imagen'), uploadProductPhoto)
