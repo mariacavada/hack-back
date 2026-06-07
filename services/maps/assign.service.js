@@ -148,9 +148,7 @@ REPARTIDOR: [nombre exacto del repartidor elegido]
 RAZÓN: [explicación breve en 1-2 oraciones en español, mencionando la cercanía a su ruta de ese día]
 `
 
-  // 5. Llamar Gemini con retry y fallback por distancia
-  let nombreElegido = null, razon = null, etaGemini = null, distGemini = null
-
+  // 5. Llamar Gemini con retry y fallback por ruta
   let nombreElegido = null, razon = null
 
   for (let intento = 1; intento <= 3; intento++) {
