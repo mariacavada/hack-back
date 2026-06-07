@@ -8,10 +8,14 @@ const {
   startDayRoute,
   completeStop,
   getTodayRoute,
+  getCedis,
 } = require('../controllers/driver.controllers')
 
 const router = Router()
 router.use(verifyToken, requireRole('driver'))
+
+// Cedis del repartidor
+router.get('/cedis', getCedis)
 
 // Pedidos
 router.get('/orders', getAssignedOrders)

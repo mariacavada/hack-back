@@ -370,6 +370,23 @@ const getTodayRoute = async (req, res) => {
   }
 }
 
+// GET /api/driver/cedis
+const getCedis = async (req, res) => {
+  try {
+    const Cedis = require('../models/Cedis.model')
+    const driver = await Driver.findById(req.decoded.id).select('cedis_id').lean()
+    if (!driver?.cedis_id) return res.status(404).json({ message: 'El repartidor no tiene cedis asignado' })
+
+    const cedis = await Cedis.findOne({ cedis_id: driver.cedis_id })
+      .select('cedis_id nombre ubicacion').lean()
+    if (!cedis) return res.status(404).json({ message: 'Cedis no encontrado' })
+
+    res.json(cedis)
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
 module.exports = {
   getAssignedOrders,
   updateOrderStatus,
@@ -377,4 +394,5 @@ module.exports = {
   startDayRoute,
   completeStop,
   getTodayRoute,
+  getCedis,
 }
