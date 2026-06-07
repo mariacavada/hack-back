@@ -16,6 +16,7 @@ const chatbotRoutes = require('./routes/chatbot.routes')
 const aiRoutes  = require('./routes/ai.routes')
 const mapRoutes   = require('./routes/map.routes')
 const routeRoutes = require('./routes/route.routes')
+const cedisRoutes = require('./routes/cedis.routes')
 
 const app  = express()
 const PORT = process.env.PORT || 4000
@@ -27,6 +28,7 @@ const allowedOrigins = [
   'http://localhost:5173',   // Vite default
   'http://localhost:4173',   // Vite preview
   process.env.FRONTEND_URL,  // production (set in .env)
+  'https://hack-web-8nhk-git-chatbot-maria-c-c-f.vercel.app/', // Vercel preview deploy
 ].filter(Boolean)
 
 app.use(cors({
@@ -52,6 +54,7 @@ app.use('/api', dashboardRoutes)
 app.use('/api/chatbot', chatbotRoutes)
 app.use('/api/ai', aiRoutes)
 app.use('/api/map',    mapRoutes)
+app.use('/api/cedis',  cedisRoutes)
 app.use('/api/routes', routeRoutes)
 
 app.listen(PORT, () => {

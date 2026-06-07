@@ -7,16 +7,46 @@ const Customer = require('../models/Customer.model')
 const Driver = require('../models/Driver.model')
 const { recordSubstitutionFeedback } = require('../services/ml/substitution.service')
 const { asignarRepartidor } = require('../services/maps/assign.service')
+const { reserveStock, releaseStock } = require('../services/inventory.service')
+const { predictStockDepletion } = require('../services/ml/stockPredict.service')
 
 // POST /api/orders
 // Crear nuevo pedido
 const createOrder = async (req, res) => {
+  // Si ya apartamos stock pero algo falla después, lo liberamos en el catch
+  let reservas = null
+  let cedisReservado = null
+  let idPedidoReservado = null
+
   try {
     const { items, cedis_id, subtotal, total, ...rest } = req.body
     if (!items?.length) return res.status(400).json({ message: 'El pedido debe tener al menos 1 producto' })
+    if (!cedis_id) return res.status(400).json({ message: 'cedis_id es requerido' })
 
     const id_pedido = `PED-${Date.now()}`
     console.log('[createOrder] 1 - creando order con id_pedido:', id_pedido)
+
+    // 1. Apartar stock del CEDIS de forma atómica — nunca debe quedar en negativo.
+    //    Si no alcanza para algún SKU, se rechaza el pedido (y se revierte lo
+    //    ya apartado en esta misma llamada).
+    try {
+      idPedidoReservado = id_pedido
+      cedisReservado = cedis_id
+      reservas = await reserveStock(
+        cedis_id,
+        items.map((it) => ({ sku: it.sku, cantidad: it.cantidad })),
+        id_pedido
+      )
+    } catch (err) {
+      if (err.code === 'STOCK_INSUFICIENTE') {
+        return res.status(409).json({
+          message: `No hay suficiente stock disponible de "${err.sku}" en este CEDIS para completar el pedido`,
+          sku: err.sku,
+        })
+      }
+      throw err
+    }
+    console.log('[createOrder] 1.5 - stock apartado:', reservas.map((r) => `${r.sku} x${r.cantidad}`).join(', '))
 
     const order = await Order.create({
       id_pedido,
@@ -49,6 +79,18 @@ const createOrder = async (req, res) => {
       eventos: [{ status: 'pendiente', descripcion: 'Pedido recibido' }],
     })
     console.log('[createOrder] 4 - tracking creado')
+
+    // 5. En segundo plano: revisar si el apartado dejó el stock por debajo de
+    //    la tendencia esperada y, de ser así, avisar al admin por WhatsApp con
+    //    cuánto pedir y para cuándo (tomando en cuenta los 3-5 días que tarda
+    //    en llegar el reabastecimiento). No bloquea la respuesta al cliente.
+    setImmediate(() => {
+      for (const r of reservas) {
+        predictStockDepletion(cedis_id, r.sku).catch((e) =>
+          console.error(`[createOrder] stock-check falló para ${r.sku}@${cedis_id}:`, e.message)
+        )
+      }
+    })
 
     // Asignación automática de repartidor con Gemini (no bloquea la respuesta)
     res.status(201).json({ message: 'Pedido creado', order, detalles })
@@ -99,6 +141,9 @@ const createOrder = async (req, res) => {
       }
     })
   } catch (err) {
+    if (reservas?.length) {
+      await releaseStock(cedisReservado, reservas, idPedidoReservado, 'rollback: error al crear el pedido').catch(() => {})
+    }
     console.error('[createOrder] ERROR:', err.message)
     res.status(500).json({ message: 'Error al crear pedido', error: err.message })
   }
@@ -267,6 +312,9 @@ const updateOrderStatusAdmin = async (req, res) => {
     const allowed = ['pendiente', 'confirmado', 'asignado', 'en_camino', 'entregado', 'incompleto', 'cancelado']
     if (!allowed.includes(status)) return res.status(400).json({ message: `Status inválido. Opciones: ${allowed.join(', ')}` })
 
+    const existing = await Order.findById(req.params.id)
+    if (!existing) return res.status(404).json({ message: 'Pedido no encontrado' })
+
     const update = { status_final: status }
     if (notes) update.notes = notes
     if (status === 'entregado') update.delivered_at = new Date()
@@ -274,6 +322,20 @@ const updateOrderStatusAdmin = async (req, res) => {
 
     const order = await Order.findByIdAndUpdate(req.params.id, update, { new: true })
     if (!order) return res.status(404).json({ message: 'Pedido no encontrado' })
+
+    // Si el pedido se cancela o queda incompleto (y no lo estaba ya), liberamos
+    // el stock que se había apartado para que regrese a stock_disponible.
+    const yaLiberado = ['cancelado', 'incompleto'].includes(existing.status_final)
+    if (['cancelado', 'incompleto'].includes(status) && !yaLiberado) {
+      const detalles = await OrderDetail.find({ id_pedido: order.id_pedido }).select('sku_solicitado quantity')
+      await releaseStock(
+        order.cedis_id,
+        detalles.map((d) => ({ sku: d.sku_solicitado, cantidad: d.quantity })),
+        order.id_pedido,
+        `Pedido marcado como "${status}" — se libera el apartado`
+      )
+      console.log(`[updateOrderStatusAdmin] stock liberado para pedido ${order.id_pedido} (${status})`)
+    }
 
     await TrackingPedido.findOneAndUpdate(
       { id_pedido: order.id_pedido },
