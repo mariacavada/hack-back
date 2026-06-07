@@ -10,6 +10,8 @@ const NotificationSchema = new Schema(
         'product_unavailable',
         'reorder_reminder',
         'substitution_suggestion',
+        'sustitucion',
+        'incidencia',
         'order_status',
         'low_stock',
         'depletion_alert',
@@ -22,6 +24,7 @@ const NotificationSchema = new Schema(
     estado: { type: String, enum: ['pendiente', 'enviada', 'leida'], default: 'pendiente' },
     prioridad: { type: String, enum: ['baja', 'media', 'alta'], default: 'media' },
     expiracion: { type: Date, default: null },
+    metadata: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: { createdAt: 'created_at' } }
 )
