@@ -24,85 +24,86 @@ const Customer = require('../../models/Customer.model')
  * @param {string} order_id  - para asociar la notificación
  */
 async function suggestSubstitutes(customer_id, original_sku, cedis_id, order_id = null) {
-  // 1. Historial de sustituciones del cliente para este SKU
-  const historial = await SubstitutionLog.find({
-    customer_id,
-    original_sku,
-  }).select('substitute_sku substitute_name accepted_by_user logged_at')
+  const InventarioCedis = require('../../models/InventarioCedis.model')
 
-  // 2. Producto original (para saber categoría y precio)
+  // 1. Historial de sustituciones del cliente
+  const historial = await SubstitutionLog.find({ customer_id, original_sku })
+    .select('substitute_sku substitute_name accepted_by_user logged_at').lean()
+
+  // 2. Producto original
   const productoOriginal = await Product.findOne({ sku: original_sku })
-    .select('name category business_unit price')
+    .select('nombre categoria precio_unitario').lean()
 
-  // 3. Productos disponibles en el cedis de la misma categoría
-  const candidatos = await Product.find({
+  // 3. Productos del mismo cedis con stock disponible (misma categoría preferida)
+  const skusConStock = await InventarioCedis.find({
     cedis_id,
-    category: productoOriginal?.category,
+    stock_disponible: { $gt: 0 },
     sku: { $ne: original_sku },
-    stock: { $gt: 0 },
-    is_available: true,
-  }).select('sku name price stock').limit(20)
+  }).select('sku stock_disponible').lean()
 
-  if (candidatos.length === 0) {
+  const skus = skusConStock.map(i => i.sku)
+  const candidatos = await Product.find({
+    sku: { $in: skus },
+    estado: 'activo',
+    categoria: productoOriginal?.categoria,
+  }).select('sku nombre categoria precio_unitario').limit(10).lean()
+
+  // Si no hay de la misma categoría, traer de cualquier categoría
+  const fallback = candidatos.length === 0
+    ? await Product.find({ sku: { $in: skus }, estado: 'activo' }).select('sku nombre categoria precio_unitario').limit(10).lean()
+    : candidatos
+
+  if (fallback.length === 0) {
     return { sugerencias: [], mensaje: 'No hay sustitutos disponibles en este cedis.' }
   }
 
-  // 4. Perfil del cliente (nombre para personalizar mensaje)
-  const cliente = await Customer.findById(customer_id).select('name')
+  // 4. Nombre del cliente para personalizar
+  const cliente = await Customer.findById(customer_id).select('nombre_negocio').lean()
 
   // 5. Prompt a Gemini
   const prompt = `
-Eres un asistente de sustitución de productos para una distribuidora de bebidas en México.
+Eres un asistente de sustitución de productos para una distribuidora de bebidas FEMSA en México.
 
 Producto original agotado:
 - SKU: ${original_sku}
-- Nombre: ${productoOriginal?.name ?? 'Desconocido'}
-- Categoría: ${productoOriginal?.category ?? 'N/A'}
-- Precio: $${productoOriginal?.price ?? 0}
+- Nombre: ${productoOriginal?.nombre ?? 'Desconocido'}
+- Categoría: ${productoOriginal?.categoria ?? 'N/A'}
+- Precio: $${productoOriginal?.precio_unitario ?? 0}
 
-Historial de sustituciones del cliente para este producto:
-${historial.length > 0 ? JSON.stringify(historial) : 'Sin historial previo.'}
+Cliente: ${cliente?.nombre_negocio ?? 'Cliente'}
 
-Candidatos disponibles en el mismo cedis:
-${JSON.stringify(candidatos)}
+Historial de sustituciones previas de este cliente para este producto:
+${historial.length > 0 ? historial.map(h => `- ${h.substitute_name}: ${h.accepted_by_user ? 'ACEPTÓ' : 'RECHAZÓ'}`).join('\n') : 'Sin historial previo.'}
+
+Productos disponibles como sustituto:
+${fallback.map(p => `- SKU: ${p.sku} | ${p.nombre} | $${p.precio_unitario} | ${p.categoria}`).join('\n')}
 
 Instrucciones:
-- Prioriza productos que el cliente haya ACEPTADO antes (accepted_by_user: true)
-- Descarta productos que haya RECHAZADO (accepted_by_user: false)
+- Prioriza productos que el cliente haya ACEPTADO antes
+- Descarta productos que haya RECHAZADO
 - Considera similitud de nombre, categoría y precio
-- Si no hay historial, ranquea por similitud de nombre y precio más cercano
-- Devuelve máximo 3 sugerencias
+- Si no hay historial, ranquea por similitud y precio más cercano
+- Máximo 3 sugerencias
 
-Responde ÚNICAMENTE con JSON válido:
+Responde ÚNICAMENTE con JSON válido (sin markdown):
 {
   "sugerencias": [
-    {
-      "sku": "string",
-      "name": "string",
-      "price": number,
-      "score_afinidad": number,
-      "razon": "string en español, 1 oración"
-    }
+    { "sku": "string", "nombre": "string", "precio": number, "score": number, "razon": "1 oración en español" }
   ],
-  "mensaje": "Mensaje amigable en español para el cliente explicando la situación"
+  "mensaje": "Mensaje amigable en español para el cliente explicando la sustitución"
 }
 `
 
   const result = await askGemini(prompt)
 
-  // 6. Notificar al usuario
+  // 6. Notificar al cliente
   await Notification.create({
-    user_id: customer_id,
-    user_role: 'usuario',
-    type: 'product_unavailable',
-    title: `⚠️ Producto no disponible`,
-    body: result.mensaje,
-    metadata: {
-      original_sku,
-      order_id,
-      sugerencias: result.sugerencias,
-    },
-    channel: 'in_app',
+    customer_id: String(customer_id),
+    titulo: '⚠️ Novedad en tu pedido',
+    mensaje: result.mensaje || `El producto ${productoOriginal?.nombre} no está disponible. Te sugerimos una alternativa.`,
+    tipo: 'sustitucion',
+    prioridad: 'alta',
+    metadata: { original_sku, order_id, sugerencias: result.sugerencias },
   })
 
   return result
