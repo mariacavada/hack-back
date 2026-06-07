@@ -4,6 +4,7 @@ const AdminSchema = new Schema(
   {
     nombre: { type: String, required: true },
     email: { type: String, required: true, unique: true, lowercase: true },
+    telefono: String,
     password_hash: { type: String, required: true, select: false },
     nivel: { type: String, default: 'operador' },
     cedis_asignados: [String],
