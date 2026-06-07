@@ -59,7 +59,7 @@ async function suggestSubstitutes(customer_id, original_sku, cedis_id, order_id 
   }
 
   // 4. Nombre del cliente para personalizar
-  const cliente = await Customer.findById(customer_id).select('nombre_negocio').lean()
+  const cliente = await Customer.findById(customer_id).select('nombre_negocio telefono').lean()
 
   // 5. Prompt a Gemini
   const prompt = `
