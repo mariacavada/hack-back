@@ -62,3 +62,18 @@ app.use('/api/routes', routeRoutes)
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`)
 })
+
+/* ─── Job diario: sugerencias de recompra ──────────────────────────────────
+ * No hay cron en el proyecto, así que lo agendamos con setInterval: corre
+ * una vez ~1 min después de levantar (deja que Mongo conecte) y luego cada
+ * 24h. computeReorderPattern() ya hace dedupe, así que reinicios frecuentes
+ * en dev no generan notificaciones duplicadas. */
+const { runReorderSuggestionsJob } = require('./services/jobs/reorderSuggestions.job')
+const UN_DIA_MS = 24 * 60 * 60 * 1000
+
+setTimeout(() => {
+  runReorderSuggestionsJob().catch((e) => console.error('[reorder-job] error:', e.message))
+  setInterval(() => {
+    runReorderSuggestionsJob().catch((e) => console.error('[reorder-job] error:', e.message))
+  }, UN_DIA_MS)
+}, 60 * 1000)

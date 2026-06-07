@@ -93,19 +93,35 @@ Responde ÚNICAMENTE con JSON válido:
   const diasRestantes = Math.ceil(
     (new Date(result.proximo_reorden) - new Date()) / (1000 * 60 * 60 * 24)
   )
+
+  // Antes este create() usaba campos que no existen en el schema
+  // (user_id/type/title/body/channel) → Notification.create() tronaba por
+  // validación cada vez que se intentaba notificar. Además, evitamos
+  // duplicar la sugerencia si ya existe una para esta misma predicción
+  // (el job diario recalcula todos los patrones cada 24h).
+  let notificado = false
   if (diasRestantes >= 0 && diasRestantes <= 3) {
-    await Notification.create({
-      user_id: customer_id,
-      user_role: 'usuario',
-      type: 'reorder_reminder',
-      title: '🛒 ¡Es momento de pedir!',
-      body: `Basado en tu historial, sueles pedir "${sku_name || sku}" cada ${Math.round(result.gap_promedio_dias)} días. ¡Ya casi es tu momento!`,
-      metadata: { sku, patron_id: pattern._id, proximo_reorden: result.proximo_reorden },
-      channel: 'in_app',
+    const yaExiste = await Notification.findOne({
+      customer_id,
+      sku,
+      tipo: 'reorder_suggestion',
+      'metadata.proximo_reorden': result.proximo_reorden,
     })
+    if (!yaExiste) {
+      await Notification.create({
+        customer_id,
+        tipo: 'reorder_suggestion',
+        titulo: '🛒 ¡Es momento de pedir!',
+        mensaje: `Basado en tu historial, sueles pedir "${sku_name || sku}" cada ${Math.round(result.gap_promedio_dias)} días. ¡Ya casi es tu momento de volver a pedir!`,
+        sku,
+        prioridad: 'media',
+        metadata: { patron_id: pattern._id, proximo_reorden: result.proximo_reorden },
+      })
+      notificado = true
+    }
   }
 
-  return { ...pattern.toObject(), tendencia: result.tendencia, dias_restantes: diasRestantes }
+  return { ...pattern.toObject(), tendencia: result.tendencia, dias_restantes: diasRestantes, notificado }
 }
 
 /**
@@ -122,7 +138,7 @@ async function computeAllPatternsForCustomer(customer_id) {
   for (const sku of detalles) {
     try {
       const r = await computeReorderPattern(customer_id, sku)
-      if (r) results.push({ sku, proximo_reorden: r.proximo_reorden })
+      if (r) results.push({ sku, proximo_reorden: r.proximo_reorden, notificado: r.notificado })
     } catch (err) {
       results.push({ sku, error: err.message })
     }
