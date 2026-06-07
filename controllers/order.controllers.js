@@ -3,7 +3,9 @@ const OrderDetail = require('../models/OrderDetail.model')
 const TrackingPedido = require('../models/TrackingPedido.model')
 const Notification = require('../models/Notification.model')
 const SubstitutionLog = require('../models/SubstitutionLog.model')
+const Customer = require('../models/Customer.model')
 const { recordSubstitutionFeedback } = require('../services/ml/substitution.service')
+const { asignarRepartidor } = require('../services/maps/assign.service')
 
 // POST /api/orders
 // Crear nuevo pedido
@@ -47,7 +49,54 @@ const createOrder = async (req, res) => {
     })
     console.log('[createOrder] 4 - tracking creado')
 
+    // Asignación automática de repartidor con Gemini (no bloquea la respuesta)
     res.status(201).json({ message: 'Pedido creado', order, detalles })
+
+    // Ejecutar asignación en background después de responder
+    setImmediate(async () => {
+      try {
+        const customer = await Customer.findById(order.customer_id).lean()
+        const ubicacionCliente = customer?.ubicacion || { lat: 25.6866, lng: -100.3161, direccion: 'Monterrey, NL', municipio: 'Monterrey' }
+
+        const { driver, razon, eta_minutos, distancia_km } = await asignarRepartidor(order, ubicacionCliente)
+
+        // Actualizar pedido con el repartidor asignado
+        await Order.findByIdAndUpdate(order._id, {
+          driver_id: driver._id,
+          status_final: 'asignado',
+          assigned_at: new Date(),
+        })
+
+        // Agregar evento al tracking
+        await TrackingPedido.findOneAndUpdate(
+          { id_pedido: order.id_pedido },
+          {
+            $set: { status_actual: 'asignado' },
+            $push: {
+              eventos: {
+                status: 'asignado',
+                descripcion: `Repartidor asignado: ${driver.nombre}. ETA: ${eta_minutos} min. ${razon}`,
+                driver_id: driver._id,
+              },
+            },
+          }
+        )
+
+        // Notificar al cliente
+        await Notification.create({
+          user_id: order.customer_id,
+          user_model: 'Customer',
+          titulo: '🚚 Repartidor asignado',
+          mensaje: `${driver.nombre} llevará tu pedido. Llegada estimada: ${eta_minutos} minutos (${distancia_km} km).`,
+          tipo: 'entrega',
+          prioridad: 'media',
+        })
+
+        console.log(`[createOrder] Repartidor asignado automáticamente: ${driver.nombre} → ${order.id_pedido}`)
+      } catch (e) {
+        console.error('[createOrder] Error en asignación automática:', e.message)
+      }
+    })
   } catch (err) {
     console.error('[createOrder] ERROR:', err.message)
     res.status(500).json({ message: 'Error al crear pedido', error: err.message })
