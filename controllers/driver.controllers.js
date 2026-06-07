@@ -183,10 +183,12 @@ const reportIncident = async (req, res) => {
       setImmediate(async () => {
         for (const item of items_afectados) {
           const sku = item.sku || item
+          console.log(`[Substitution] iniciando para SKU ${sku}, customer ${order.customer_id}, cedis ${order.cedis_id}`)
           try {
-            await suggestSubstitutes(order.customer_id, sku, order.cedis_id, order._id)
+            const result = await suggestSubstitutes(order.customer_id, sku, order.cedis_id, order._id)
+            console.log(`[Substitution] OK para SKU ${sku}:`, JSON.stringify(result?.sugerencias?.length), 'sugerencias')
           } catch (e) {
-            console.error(`[Substitution] SKU ${sku}:`, e.message)
+            console.error(`[Substitution] ERROR SKU ${sku}:`, e.message, e.stack)
           }
         }
       })
