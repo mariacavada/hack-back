@@ -11,6 +11,8 @@ const ProductSchema = new Schema(
     precio_unitario: { type: Number, required: true, default: 0 },
     sustitutos_compatibles: [String],
     estado: { type: String, default: 'activo' },
+    imagen_url: String,
+    imagen_public_id: String,
   },
   { timestamps: { updatedAt: 'updated_at' } }
 )

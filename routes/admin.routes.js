@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const verifyToken = require('../utils/jwt')
 const requireRole = require('../middleware/requireRole')
+const upload = require('../middleware/upload.middleware')
 const {
   getAllUsers,
   getUserById,
@@ -10,6 +11,7 @@ const {
   assignDriver,
   getLowStock,
   getDepletionRisk,
+  uploadProductPhoto,
 } = require('../controllers/admin.controllers')
 
 const router = Router()
@@ -28,5 +30,8 @@ router.patch('/orders/:id/assign', assignDriver)
 // Inventario / ML
 router.get('/inventory/low-stock', getLowStock)
 router.get('/inventory/depletion-risk', getDepletionRisk)
+
+// Productos
+router.post('/products/:id/photo', upload.single('imagen'), uploadProductPhoto)
 
 module.exports = router

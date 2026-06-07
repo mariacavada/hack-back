@@ -7,6 +7,8 @@ const InventarioCedis = require('../models/InventarioCedis.model')
 const StockPredict = require('../models/StockPredict.model')
 const Notification = require('../models/Notification.model')
 const TrackingPedido = require('../models/TrackingPedido.model')
+const Product = require('../models/Product.model')
+const { uploadImage, deleteImage } = require('../services/upload.service')
 
 // ── USUARIOS ─────────────────────────────────────────────────────────────────
 
@@ -226,6 +228,32 @@ const getDepletionRisk = async (req, res) => {
   }
 }
 
+// ── PRODUCTOS ────────────────────────────────────────────────────────────────
+
+// POST /api/admin/products/:id/photo
+// Sube/reemplaza la foto de un producto (multipart/form-data, campo "imagen")
+const uploadProductPhoto = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'Falta el archivo de imagen (campo "imagen")' })
+
+    const product = await Product.findById(req.params.id)
+    if (!product) return res.status(404).json({ message: 'Producto no encontrado' })
+
+    // Si ya tenía foto, borramos la anterior de Cloudinary
+    if (product.imagen_public_id) await deleteImage(product.imagen_public_id)
+
+    const { url, public_id } = await uploadImage(req.file.buffer, 'productos')
+
+    product.imagen_url = url
+    product.imagen_public_id = public_id
+    await product.save()
+
+    res.json({ message: 'Imagen subida', imagen_url: url })
+  } catch (err) {
+    res.status(500).json({ message: 'Error al subir imagen', error: err.message })
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -235,4 +263,5 @@ module.exports = {
   assignDriver,
   getLowStock,
   getDepletionRisk,
+  uploadProductPhoto,
 }
