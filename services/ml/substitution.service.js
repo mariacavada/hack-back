@@ -110,12 +110,17 @@ Responde ÚNICAMENTE con JSON válido (sin markdown):
   })
 
   // WhatsApp al cliente si tiene teléfono
+  console.log('[WA sustitucion] telefono:', cliente?.telefono, '| sugerencias:', result.sugerencias?.length)
   if (cliente?.telefono) {
     const sugerenciasTxt = (result.sugerencias || [])
       .map((s, i) => `${i + 1}. ${s.nombre} $${s.precio} — ${s.razon}`)
       .join('\n')
     const wa = `⚠️ *Novedad en tu pedido*\n\n${mensajeNotif}\n\n*Opciones sugeridas:*\n${sugerenciasTxt}\n\nResponde a tu asesor si deseas confirmar una sustitución.`
-    sendWhatsAppMessage(cliente.telefono, wa).catch(e => console.error('[WA sustitucion]', e.message))
+    sendWhatsAppMessage(cliente.telefono, wa)
+      .then(m => console.log('[WA sustitucion] OK sid:', m.sid))
+      .catch(e => console.error('[WA sustitucion] ERROR:', e.message))
+  } else {
+    console.log('[WA sustitucion] sin telefono, no se envía WA')
   }
 
   return result
