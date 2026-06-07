@@ -151,15 +151,31 @@ const reportIncident = async (req, res) => {
       { upsert: true }
     )
 
-    // Notificar al cliente si es producto faltante o dañado
-    if (['producto_faltante', 'producto_dañado'].includes(tipo)) {
+    // Notificar al cliente si es producto dañado (sin sustitución)
+    if (tipo === 'producto_dañado') {
       await Notification.create({
-        customer_id: order.customer_id,
+        user_id: String(order.customer_id),
+        user_model: 'Customer',
         id_pedido: order.id_pedido,
-        tipo: 'product_unavailable',
+        tipo: 'incidencia',
         titulo: '⚠️ Novedad en tu pedido',
         mensaje: descripcion,
         prioridad: 'alta',
+      })
+    }
+
+    // Si hay productos faltantes, lanzar sustitución con Gemini en background
+    if (tipo === 'producto_faltante' && items_afectados?.length > 0) {
+      const { suggestSubstitutes } = require('../services/ml/substitution.service')
+      setImmediate(async () => {
+        for (const item of items_afectados) {
+          const sku = item.sku || item
+          try {
+            await suggestSubstitutes(order.customer_id, sku, order.cedis_id, order._id)
+          } catch (e) {
+            console.error(`[Substitution] SKU ${sku}:`, e.message)
+          }
+        }
       })
     }
 
