@@ -15,6 +15,8 @@ const StockPredict = require('../../models/StockPredict.model')
 const InventoryMvt = require('../../models/InventoryMvt.model')
 const InventarioCedis = require('../../models/InventarioCedis.model')
 const Admin = require('../../models/Admin.model')
+const Product = require('../../models/Product.model')
+const Cedis = require('../../models/Cedis.model')
 const { sendWhatsAppMessage } = require('../whatsapp.service')
 
 // Lead time real del proveedor: tarda entre 3 y 5 días en surtir un reorden.
@@ -58,8 +60,8 @@ Eres un sistema de predicción de inventario para una empresa de distribución d
 Datos del producto:
 - SKU: ${sku}
 - CEDIS: ${cedis_id}
-- Stock disponible actual: ${stock_actual} unidades
-- Stock ya apartado/reservado por pedidos: ${stock_reservado} unidades
+- Stock disponible para vender HOY: ${stock_actual} unidades. ¡IMPORTANTE!: este número YA es el stock libre/neto — los pedidos que ya se apartaron se restaron de aquí, así que NO vuelvas a restar nada por ese concepto ni concluyas que el stock está en negativo.
+- Dato informativo aparte (no lo resates de lo anterior, es solo para que sepas cuánta demanda futura ya está comprometida): hay ${stock_reservado} unidades apartadas por pedidos que ya están en proceso/camino de surtirse.
 - Salidas (incluye apartados) en los últimos 30 días: ${totalSalidas} unidades
 - Rotación diaria real: ${rotacion_diaria_real.toFixed(2)} unidades/día
 - Movimientos recientes (últimos 10): ${JSON.stringify(movimientos.slice(-10))}
@@ -73,7 +75,7 @@ Calcula:
 5. cantidad_reorden_sugerida: cuántas unidades pedir — debe alcanzar para cubrir la demanda de los ${TIEMPO_ENTREGA_DIAS} días de espera mientras llega el reorden, MÁS un colchón para ~30 días de operación normal después de eso
 6. nivel_alerta: usa estos umbrales pensando en el lead time de ${TIEMPO_ENTREGA_DIAS} días — "ok" si dias_estimados_agotamiento > ${TIEMPO_ENTREGA_DIAS + 9}, "bajo" si está entre ${TIEMPO_ENTREGA_DIAS + 2} y ${TIEMPO_ENTREGA_DIAS + 9}, "critico" si es ≤ ${TIEMPO_ENTREGA_DIAS + 2} (es decir, si pedir HOY apenas alcanzaría a llegar antes de que se agote, o ya ni eso)
 7. confianza: número entre 0 y 1 según calidad de los datos
-8. razon: explicación breve en español de 1 oración
+8. razon: explicación breve en español de 1 oración, basada SOLO en la rotación/demanda y los días estimados de agotamiento — no menciones "stock negativo" ni restas con el stock apartado, ese dato es solo contexto informativo
 
 Responde ÚNICAMENTE con JSON válido con exactamente estas claves:
 {
@@ -130,6 +132,15 @@ async function alertAdminsWhatsApp(prediction, geminiResult) {
   const admins = await Admin.find({ telefono: { $exists: true, $nin: [null, ''] } }).select('nombre telefono')
   if (!admins.length) return
 
+  // Nombres legibles para el mensaje — un admin no identifica un SKU/cedis_id
+  // de memoria, pero sí "Coca Cola Original 600ML" o "CEDIS Monterrey Norte"
+  const [producto, cedis] = await Promise.all([
+    Product.findOne({ sku: prediction.sku }).select('nombre'),
+    Cedis.findOne({ cedis_id: prediction.cedis_id }).select('nombre'),
+  ])
+  const nombreProducto = producto?.nombre || `SKU ${prediction.sku}`
+  const nombreCedis = cedis?.nombre || `CEDIS ${prediction.cedis_id}`
+
   const esCritico = geminiResult.nivel_alerta === 'critico'
   const emoji = esCritico ? '🔴' : '🟡'
   const fechaLimiteTxt = geminiResult.fecha_limite_pedido
@@ -138,7 +149,7 @@ async function alertAdminsWhatsApp(prediction, geminiResult) {
 
   const mensaje =
     `${emoji} *Alerta de stock ${esCritico ? 'CRÍTICA' : 'BAJA'}*\n` +
-    `SKU: *${prediction.sku}* — CEDIS ${prediction.cedis_id}\n` +
+    `*${nombreProducto}* — ${nombreCedis}\n` +
     `Disponible: ${prediction.stock_actual} u. — se agotaría en ~${geminiResult.dias_estimados_agotamiento} días.\n\n` +
     `📦 Sugerencia: pide *${geminiResult.cantidad_reorden_sugerida} unidades* a más tardar el *${fechaLimiteTxt}* ` +
     `(el proveedor tarda ${TIEMPO_ENTREGA_MIN_DIAS}-${TIEMPO_ENTREGA_MAX_DIAS} días en surtir).\n\n` +
