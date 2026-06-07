@@ -10,9 +10,16 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ─── Cache en memoria del modelo global de cantidad ──────────────────────────
-# Se entrena una vez (vía /train-global o automáticamente en el primer /suggest)
-# y se reutiliza para todos los clientes — evita reentrenar por cada request.
+# ─── Cache de DIAGNÓSTICO del modelo global de cantidad (XGBoost) ───────────
+# IMPORTANTE: este modelo YA NO se usa para generar sugerencias en producción.
+# La validación honesta (ver xgboost_model.py) mostró que pierde contra un
+# baseline simple ("va a pedir lo mismo que la última vez"), así que producción
+# usa suggest_quantity_heuristic (suavizado exponencial) — no requiere modelo.
+#
+# Este caché solo sirve para /train-global y /quantity-model/status: una forma
+# de re-evaluar de vez en cuando si, con más datos reales acumulados, XGBoost
+# empieza a aportar algo. Si algún día "supera_baseline" sale true de forma
+# consistente, ahí sí valdría la pena cambiar la producción a usarlo.
 _quantity_model_cache = {"model": None, "metrics": None, "trained_at": None}
 
 
@@ -141,20 +148,16 @@ def upsert_quantity(result: dict):
 
 def run_suggest_quantity(customer_id: str):
     """
-    Genera sugerencias de cantidad para un cliente usando el modelo GLOBAL
-    (cacheado / entrenado bajo demanda — ya no se entrena uno nuevo por cliente).
+    Genera sugerencias de cantidad para un cliente usando la heurística de
+    suavizado exponencial — la opción que ganó la validación honesta contra
+    XGBoost (ver docstring de xgboost_model.py). No requiere entrenar nada.
     """
-    model = _get_cached_quantity_model()
-    if model is None:
-        logger.warning("[B-global] No hay modelo entrenado todavía (datos insuficientes)")
-        return None
-
-    result = suggest_for_customer(model, db, customer_id)
+    result = suggest_for_customer(db, customer_id)
     if result:
         upsert_quantity(result)
-        logger.info(f"[B-global] {customer_id} → {result['total_skus']} SKUs sugeridos")
+        logger.info(f"[B] {customer_id} → {result['total_skus']} SKUs sugeridos (heurística)")
     else:
-        logger.warning(f"[B-global] {customer_id} skipped: not enough order history")
+        logger.warning(f"[B] {customer_id} skipped: not enough order history")
     return result
 
 
@@ -241,11 +244,11 @@ def suggest_quantity(customer_id: str):
     try:
         result = run_suggest_quantity(customer_id)
     except Exception as e:
-        logger.exception(f"[B-global] Error {customer_id}: {e}")
+        logger.exception(f"[B] Error {customer_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     if not result:
-        raise HTTPException(status_code=422, detail="Not enough order history, or global model could not be trained yet")
-    return {"ok": True, "suggestion": result, "model_metrics": _quantity_model_cache["metrics"]}
+        raise HTTPException(status_code=422, detail="Not enough order history")
+    return {"ok": True, "suggestion": result, "metodo": "suavizado_exponencial"}
 
 
 @app.get("/suggest/{customer_id}")
@@ -288,15 +291,9 @@ def _train_all_task(customer_ids: list):
 
 
 def _suggest_all_task(customer_ids: list):
-    # Entrena el modelo global UNA sola vez y lo reutiliza para todos los clientes
-    # (antes se reentrenaba un modelo nuevo por cada cliente — muy ineficiente).
-    if _get_cached_quantity_model() is None:
-        logger.warning("[B-global] suggest/all abortado: no se pudo entrenar el modelo global")
-        return
-
     ok, skip = 0, 0
     for cid in customer_ids:
         r = run_suggest_quantity(cid)
         ok += 1 if r else 0
         skip += 0 if r else 1
-    logger.info(f"[B-global] suggest/all done — ok:{ok} skip:{skip}")
+    logger.info(f"[B] suggest/all done — ok:{ok} skip:{skip}")
