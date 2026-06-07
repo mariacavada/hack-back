@@ -305,6 +305,34 @@ const getDriverTodayRoute = async (req, res) => {
   }
 }
 
+// POST /api/admin/inventory/restock
+const restockCedis = async (req, res) => {
+  try {
+    const { cedis_id, items } = req.body
+    if (!cedis_id || !Array.isArray(items) || items.length === 0)
+      return res.status(400).json({ message: 'cedis_id e items son requeridos' })
+
+    const results = await Promise.all(
+      items.map(({ sku, cantidad }) =>
+        InventarioCedis.findOneAndUpdate(
+          { cedis_id, sku },
+          { $inc: { stock_disponible: cantidad } },
+          { new: true }
+        )
+      )
+    )
+
+    const updated = results.filter(Boolean).length
+    res.json({ message: `Restock aplicado: ${updated} producto(s) actualizados`, cedis_id, total: updated })
+
+    // Re-indexar inventario en RAG en background
+    const { indexInventory } = require('../services/rag/indexer.service')
+    setImmediate(() => indexInventory(cedis_id).catch(e => console.error('[RAG restock]', e.message)))
+  } catch (err) {
+    res.status(500).json({ message: 'Error al aplicar restock', error: err.message })
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -319,4 +347,5 @@ module.exports = {
   getDriverById,
   getDriverOrders,
   getDriverTodayRoute,
+  restockCedis,
 }

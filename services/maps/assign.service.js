@@ -148,22 +148,42 @@ REPARTIDOR: [nombre exacto del repartidor elegido]
 RAZÓN: [explicación breve en 1-2 oraciones en español, mencionando la cercanía a su ruta de ese día]
 `
 
-  const respuesta = await askGeminiText(prompt)
+  // 5. Llamar Gemini con retry y fallback por distancia
+  let nombreElegido = null, razon = null, etaGemini = null, distGemini = null
 
-  const lines = respuesta.split('\n').map((l) => l.trim()).filter(Boolean)
-  const get = (prefix) => {
-    const line = lines.find((l) => l.toUpperCase().startsWith(prefix.toUpperCase()))
-    return line ? line.split(':').slice(1).join(':').trim() : null
+  let nombreElegido = null, razon = null
+
+  for (let intento = 1; intento <= 3; intento++) {
+    try {
+      const respuesta = await askGeminiText(prompt)
+      const lines = respuesta.split('\n').map((l) => l.trim()).filter(Boolean)
+      const get = (prefix) => {
+        const line = lines.find((l) => l.toUpperCase().startsWith(prefix.toUpperCase()))
+        return line ? line.split(':').slice(1).join(':').trim() : null
+      }
+      nombreElegido = get('REPARTIDOR')
+      razon         = get('RAZÓN') || get('RAZON')
+      break
+    } catch (e) {
+      if (intento === 3) {
+        console.warn('[asignarRepartidor] Gemini no disponible, usando fallback por ruta:', e.message)
+      } else {
+        await new Promise((r) => setTimeout(r, 1500 * intento))
+      }
+    }
   }
 
-  const nombreElegido = get('REPARTIDOR')
-  const razon = get('RAZÓN') || get('RAZON')
+  // Fallback: elegir la ruta más compacta (menor distancia de referencia y menor carga ese día)
+  const mejorOpcion = opciones.slice().sort((a, b) =>
+    ((a.distancia_ruta_km ?? Infinity) + a.entregas_agendadas_ese_dia * 5) -
+    ((b.distancia_ruta_km ?? Infinity) + b.entregas_agendadas_ese_dia * 5)
+  )[0]
 
-  const driverElegido = repartidores.find((r) =>
-    nombreElegido && r.nombre.toLowerCase().includes(nombreElegido.toLowerCase().split(' ')[0])
-  ) || repartidores[0]
+  const driverElegido = nombreElegido
+    ? repartidores.find((r) => r.nombre.toLowerCase().includes(nombreElegido.toLowerCase().split(' ')[0])) || repartidores.find((r) => String(r._id) === mejorOpcion.driver_id)
+    : repartidores.find((r) => String(r._id) === mejorOpcion.driver_id)
 
-  const opcionElegida = opciones.find((o) => o.driver_id === String(driverElegido._id)) || opciones[0]
+  const opcionElegida = opciones.find((o) => o.driver_id === String(driverElegido._id)) || mejorOpcion
 
   return {
     driver: driverElegido,

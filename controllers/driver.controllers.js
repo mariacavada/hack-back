@@ -11,9 +11,14 @@ const { askGemini } = require('../utils/gemini')
 // Ver pedidos asignados al repartidor logueado
 const getAssignedOrders = async (req, res) => {
   try {
+    const mongoose = require('mongoose')
+    const driverId = mongoose.Types.ObjectId.isValid(req.decoded.id)
+      ? new mongoose.Types.ObjectId(req.decoded.id)
+      : req.decoded.id
+
     const orders = await Order.find({
-      driver_id: req.decoded.id,
-      status_final: { $in: ['asignado', 'en_camino'] },
+      driver_id: driverId,
+      status_final: { $in: ['asignado', 'en_camino', 'entregado', 'incompleto'] },
     }).sort({ created_at: 1 })
 
     // Adjuntar detalles de cada pedido

@@ -1,5 +1,5 @@
 const { chat } = require('../services/rag/chatbot.service')
-const { indexOrder, indexAllProducts, indexCustomerSubstitutions, indexFAQ } = require('../services/rag/indexer.service')
+const { indexOrder, indexAllProducts, indexCustomerSubstitutions, indexFAQ, indexInventory } = require('../services/rag/indexer.service')
 const ChatbotSession = require('../models/ChatbotSession.model')
 
 // POST /api/chatbot/message
@@ -94,6 +94,16 @@ const indexSubstitutionsEndpoint = async (req, res) => {
   }
 }
 
+// POST /api/chatbot/index/inventory/:cedis_id
+const indexInventoryEndpoint = async (req, res) => {
+  try {
+    await indexInventory(req.params.cedis_id)
+    res.json({ message: `Inventario del cedis ${req.params.cedis_id} indexado en el RAG` })
+  } catch (err) {
+    res.status(500).json({ message: 'Error al indexar inventario', error: err.message })
+  }
+}
+
 module.exports = {
   sendMessage,
   getMySessions,
@@ -102,4 +112,5 @@ module.exports = {
   indexProductsEndpoint,
   indexFAQEndpoint,
   indexSubstitutionsEndpoint,
+  indexInventoryEndpoint,
 }
