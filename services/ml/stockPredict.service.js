@@ -37,8 +37,22 @@ async function predictStockDepletion(cedis_id, sku) {
   // 1. Stock actual (disponible — lo que de verdad se puede vender; lo
   //    apartado/reservado ya está comprometido con pedidos existentes)
   const inventario = await InventarioCedis.findOne({ cedis_id, sku })
-  const stock_actual = inventario?.stock_disponible ?? 0
-  const stock_reservado = inventario?.stock_reservado ?? 0
+
+  // Si el SKU NI SIQUIERA tiene un registro de inventario en este CEDIS, no
+  // es un producto que se maneje ahí — no hay nada real que predecir. Sin
+  // esta validación, stock_actual caía a 0 por el `?? 0` y le mandábamos a
+  // Gemini "stock: 0, rotación: 0" — sin datos reales con qué razonar,
+  // alucinaba fechas sin sentido (incluso en el pasado) y "confianza: 0.1"
+  // (el propio modelo admitiendo que no tenía nada en qué basarse). Mejor
+  // ni gastar la llamada ni ensuciar las alertas con un "crítico" falso.
+  if (!inventario) {
+    const err = new Error(`El SKU "${sku}" no tiene inventario registrado en el CEDIS "${cedis_id}" — no se puede predecir su agotamiento`)
+    err.code = 'SIN_INVENTARIO'
+    throw err
+  }
+
+  const stock_actual = inventario.stock_disponible ?? 0
+  const stock_reservado = inventario.stock_reservado ?? 0
 
   // 2. Últimos 30 días de movimientos de salida (incluye apartados por pedidos)
   const hace30Dias = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
