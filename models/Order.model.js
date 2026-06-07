@@ -10,7 +10,12 @@ const OrderSchema = new Schema(
     id_businessunit: Number,
     business_unit: String,
     fecha_pedido: String,
-    fecha_entrega: { type: String, default: null },
+    fecha_entrega: { type: Date, default: null },
+    delivery_window_start: { type: Date, default: null },
+    delivery_window_end:   { type: Date, default: null },
+    assigned_at:           { type: Date, default: null },
+    delivered_at:          { type: Date, default: null },
+    notes:                 { type: String, default: null },
     status_final: {
       type: String,
       enum: ['pendiente', 'confirmado', 'asignado', 'en_camino', 'entregado', 'incompleto', 'cancelado'],

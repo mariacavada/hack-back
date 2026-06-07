@@ -6,10 +6,16 @@ const TrackingPedidoSchema = new Schema(
     customer_id: { type: String, index: true },
     eventos: [
       {
-        status: String,
+        event_type: {
+          type: String,
+          enum: ['asignado', 'cargando_camion', 'pedido_faltante', 'salio_centro', 'en_camino', 'entregado', 'cancelado'],
+        },
+        status:      String,
         descripcion: String,
-        timestamp: { type: Date, default: Date.now },
-        coords: { lat: Number, lng: Number },
+        timestamp:   { type: Date, default: Date.now },
+        driver_id:   { type: Schema.Types.ObjectId, ref: 'Driver', default: null },
+        coords:      { lat: Number, lng: Number },
+        note:        String,
       },
     ],
     status_actual: { type: String, default: 'pendiente' },

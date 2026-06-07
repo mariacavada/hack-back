@@ -155,4 +155,108 @@ const respondSubstitution = async (req, res) => {
   }
 }
 
-module.exports = { createOrder, getMyOrders, getOrderDetail, respondSubstitution }
+// GET /api/orders/:id/status
+// Vista resumida para el cliente: driver, fecha, estado, ventana
+const getOrderStatus = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).lean()
+    if (!order) return res.status(404).json({ message: 'Pedido no encontrado' })
+
+    const Driver = require('../models/Driver.model')
+    const driver = order.driver_id ? await Driver.findById(order.driver_id).select('nombre telefono vehiculo_placa ubicacion_actual').lean() : null
+    const tracking = await TrackingPedido.findOne({ id_pedido: order.id_pedido }).select('status_actual eventos').lean()
+
+    res.json({
+      id_pedido:             order.id_pedido,
+      status:                order.status_final,
+      fecha_pedido:          order.fecha_pedido,
+      fecha_entrega:         order.fecha_entrega,
+      delivery_window_start: order.delivery_window_start,
+      delivery_window_end:   order.delivery_window_end,
+      assigned_at:           order.assigned_at,
+      delivered_at:          order.delivered_at,
+      total:                 order.total,
+      driver: driver ? {
+        nombre:        driver.nombre,
+        telefono:      driver.telefono,
+        placa:         driver.vehiculo_placa,
+        ubicacion:     driver.ubicacion_actual,
+      } : null,
+      ultimo_evento: tracking?.eventos?.slice(-1)[0] || null,
+    })
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
+// PATCH /api/orders/:id/status
+// Admin actualiza estado de un pedido
+// Body: { status, notes? }
+const updateOrderStatusAdmin = async (req, res) => {
+  try {
+    const { status, notes } = req.body
+    const allowed = ['pendiente', 'confirmado', 'asignado', 'en_camino', 'entregado', 'incompleto', 'cancelado']
+    if (!allowed.includes(status)) return res.status(400).json({ message: `Status inválido. Opciones: ${allowed.join(', ')}` })
+
+    const update = { status_final: status }
+    if (notes) update.notes = notes
+    if (status === 'entregado') update.delivered_at = new Date()
+    if (status === 'asignado')  update.assigned_at  = new Date()
+
+    const order = await Order.findByIdAndUpdate(req.params.id, update, { new: true })
+    if (!order) return res.status(404).json({ message: 'Pedido no encontrado' })
+
+    await TrackingPedido.findOneAndUpdate(
+      { id_pedido: order.id_pedido },
+      {
+        status_actual: status,
+        $push: { eventos: { event_type: status, status, descripcion: notes || `Estado actualizado a ${status}`, timestamp: new Date() } },
+      },
+      { upsert: true }
+    )
+
+    res.json({ message: 'Estado actualizado', order })
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
+// PATCH /api/orders/:id/deliver
+// Repartidor marca entrega directamente desde el pedido
+// Body: { coords?, notes? }
+const markDelivered = async (req, res) => {
+  try {
+    const { coords, notes } = req.body
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.id, driver_id: req.decoded.id },
+      { status_final: 'entregado', delivered_at: new Date(), notes: notes || null },
+      { new: true }
+    )
+    if (!order) return res.status(404).json({ message: 'Pedido no encontrado o no asignado a ti' })
+
+    await TrackingPedido.findOneAndUpdate(
+      { id_pedido: order.id_pedido },
+      {
+        status_actual: 'entregado',
+        $push: { eventos: { event_type: 'entregado', status: 'entregado', descripcion: notes || 'Pedido entregado', coords: coords || null, driver_id: req.decoded.id, timestamp: new Date() } },
+      },
+      { upsert: true }
+    )
+
+    const Notification = require('../models/Notification.model')
+    await Notification.create({
+      customer_id: order.customer_id,
+      id_pedido:   order.id_pedido,
+      tipo:        'order_status',
+      titulo:      '✅ ¡Tu pedido fue entregado!',
+      mensaje:     notes || 'Tu pedido ha sido entregado exitosamente.',
+      prioridad:   'media',
+    })
+
+    res.json({ message: '✅ Pedido marcado como entregado', order })
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
+module.exports = { createOrder, getMyOrders, getOrderDetail, respondSubstitution, getOrderStatus, updateOrderStatusAdmin, markDelivered }

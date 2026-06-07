@@ -15,6 +15,13 @@ const CustomerSchema = new Schema(
     estado: { type: String, default: 'activo' },
     preferencias_notificacion: { type: Schema.Types.Mixed, default: {} },
     patrones_preferencia: { type: Schema.Types.Mixed, default: {} },
+    ubicacion: {
+      lat:       { type: Number },
+      lng:       { type: Number },
+      direccion: { type: String },
+      colonia:   { type: String },
+      municipio: { type: String },
+    },
     last_login: Date,
   },
   { timestamps: { createdAt: 'created_at' } }
