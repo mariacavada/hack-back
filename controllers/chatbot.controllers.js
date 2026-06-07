@@ -19,7 +19,20 @@ const sendMessage = async (req, res) => {
     res.json(result)
   } catch (err) {
     console.error('[Chatbot]', err.message)
-    res.status(500).json({ message: 'Error en el chatbot', error: err.message })
+
+    // La cuota free-tier de Gemini (20 requests/día para gemini-2.5-flash,
+    // COMPARTIDA por todos los features que usan IA en la app) se agota
+    // seguido — y el mensaje genérico "Inténtalo nuevamente" es engañoso
+    // porque reintentar no sirve hasta que la cuota se renueve. Avisamos
+    // claro para que el usuario no piense que el chat está roto.
+    if (/\[429\b/.test(err.message)) {
+      return res.status(503).json({
+        message: 'El asistente alcanzó su límite de uso por hoy. Intenta de nuevo más tarde.',
+        error: 'gemini_quota_exceeded',
+      })
+    }
+
+    res.status(500).json({ message: 'Ocurrió un error con el asistente. Intenta de nuevo en unos minutos.', error: err.message })
   }
 }
 
