@@ -7,7 +7,7 @@ const Product = require('../models/Product.model')
 const getProducts = async (req, res) => {
   try {
     const products = await Product.find({ estado: 'activo' })
-      .select('sku nombre precio_unitario -_id')
+      .select('sku nombre precio_unitario categoria -_id')
       .lean()
 
     res.json(products)
