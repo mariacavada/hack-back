@@ -2,9 +2,21 @@ const { Router } = require('express')
 const verifyToken = require('../utils/jwt')
 const requireRole = require('../middleware/requireRole')
 const Customer = require('../models/Customer.model')
+const Product = require('../models/Product.model')
 
 const router = Router()
 router.use(verifyToken, requireRole('customer'))
+
+// GET /api/customer/products
+router.get('/products', async (req, res) => {
+  try {
+    const products = await Product.find({ estado: 'activo' })
+      .select('sku nombre categoria precio_unitario imagen_url descripcion').lean()
+    res.json(products.map(p => ({ ...p, precio: p.precio_unitario })))
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+})
 
 // GET /api/customer/me
 router.get('/me', async (req, res) => {
