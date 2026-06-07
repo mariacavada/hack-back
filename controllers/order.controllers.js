@@ -4,6 +4,7 @@ const TrackingPedido = require('../models/TrackingPedido.model')
 const Notification = require('../models/Notification.model')
 const SubstitutionLog = require('../models/SubstitutionLog.model')
 const Customer = require('../models/Customer.model')
+const Driver = require('../models/Driver.model')
 const { recordSubstitutionFeedback } = require('../services/ml/substitution.service')
 const { asignarRepartidor } = require('../services/maps/assign.service')
 
@@ -113,18 +114,37 @@ const getMyOrders = async (req, res) => {
 
     const result = await Promise.all(
       orders.map(async (o) => {
-        const detalles = await OrderDetail.find({ id_pedido: o.id_pedido }).lean()
+        const [detalles, tracking, driver] = await Promise.all([
+          OrderDetail.find({ id_pedido: o.id_pedido }).lean(),
+          TrackingPedido.findOne({ id_pedido: o.id_pedido }).lean(),
+          o.driver_id ? Driver.findById(o.driver_id).select('nombre telefono placa ubicacion_actual').lean() : null,
+        ])
         return {
+          _id: o._id,
           id_pedido: o.id_pedido,
           fecha_pedido: o.fecha_pedido,
+          fecha_entrega: o.fecha_entrega,
           status_final: o.status_final,
           subtotal: o.subtotal,
           total: o.total,
           cedis_id: o.cedis_id,
+          assigned_at: o.assigned_at,
+          delivered_at: o.delivered_at,
+          driver: driver ? {
+            nombre: driver.nombre,
+            telefono: driver.telefono,
+            placa: driver.placa,
+            ubicacion_actual: driver.ubicacion_actual,
+          } : null,
+          tracking: tracking ? {
+            status_actual: tracking.status_actual,
+            ultimo_evento: tracking.eventos?.at(-1) || null,
+          } : null,
           items: detalles.map((d) => ({
             sku: d.sku_solicitado,
             nombre: d.nombre_sku_solicitado,
             cantidad: d.quantity,
+            status: d.status,
           })),
         }
       })
