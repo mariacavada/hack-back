@@ -370,6 +370,33 @@ const getTodayRoute = async (req, res) => {
   }
 }
 
+// GET /api/driver/orders/:id/customer-location
+const getCustomerLocation = async (req, res) => {
+  try {
+    const mongoose = require('mongoose')
+    const driverId = mongoose.Types.ObjectId.isValid(req.decoded.id)
+      ? new mongoose.Types.ObjectId(req.decoded.id)
+      : req.decoded.id
+
+    const order = await Order.findOne({ _id: req.params.id, driver_id: driverId })
+      .select('customer_id id_pedido').lean()
+    if (!order) return res.status(404).json({ message: 'Pedido no encontrado o no asignado a ti' })
+
+    const customer = await Customer.findById(order.customer_id)
+      .select('nombre_negocio telefono ubicacion').lean()
+    if (!customer) return res.status(404).json({ message: 'Cliente no encontrado' })
+
+    res.json({
+      id_pedido: order.id_pedido,
+      cliente: customer.nombre_negocio,
+      telefono: customer.telefono,
+      ubicacion: customer.ubicacion,
+    })
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message })
+  }
+}
+
 // GET /api/driver/cedis
 const getCedis = async (req, res) => {
   try {
@@ -395,4 +422,5 @@ module.exports = {
   completeStop,
   getTodayRoute,
   getCedis,
+  getCustomerLocation,
 }

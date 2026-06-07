@@ -9,6 +9,7 @@ const {
   completeStop,
   getTodayRoute,
   getCedis,
+  getCustomerLocation,
 } = require('../controllers/driver.controllers')
 
 const router = Router()
@@ -19,6 +20,7 @@ router.get('/cedis', getCedis)
 
 // Pedidos
 router.get('/orders', getAssignedOrders)
+router.get('/orders/:id/customer-location', getCustomerLocation)
 router.patch('/orders/:id/status', updateOrderStatus)
 
 // Incidencias
